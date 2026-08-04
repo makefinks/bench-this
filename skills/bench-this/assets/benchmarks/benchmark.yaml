@@ -1,0 +1,17 @@
+version: 1
+
+image:
+  name: project-agent-benchmark
+  dockerfile: benchmarks/Dockerfile
+
+setup_command: /bin/sh /benchmark/setup.sh /workspace
+compose_file: null
+
+defaults:
+  solver_timeout_seconds: null
+  evaluator_timeout_seconds: 300
+  setup_timeout_seconds: 900
+  repetitions: 1
+
+# Add exact rates only for models with externally billed token rates.
+prices: {}

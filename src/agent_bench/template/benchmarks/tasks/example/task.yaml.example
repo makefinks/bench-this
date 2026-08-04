@@ -1,0 +1,15 @@
+version: 1
+id: example
+base_commit: replace-with-base-commit
+reference_commit: replace-with-reference-commit
+prompt: prompt.md
+public_directory: public
+public_tests_directory: public-tests
+public_test_command: /bin/sh /public-tests/run.sh /workspace
+public_test_groups:
+  - replace-with-public-check
+hidden_tests_directory: hidden-tests
+test_command: /bin/sh /evaluator/run.sh /workspace
+requirement_groups:
+  - replace-with-public-group
+solver_timeout_seconds: null

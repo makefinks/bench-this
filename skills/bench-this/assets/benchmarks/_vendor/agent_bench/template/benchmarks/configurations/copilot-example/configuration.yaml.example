@@ -1,0 +1,7 @@
+id: copilot-example
+harness: copilot
+model: replace-with-pinned-model
+harness_config: harness
+workspace_config: workspace
+auth_profile: copilot
+arguments: []
