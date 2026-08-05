@@ -17,6 +17,12 @@ available.
 > task-authoring guards, runner modules, validation model, Docker boundaries, and measured lifecycle
 > in detail.
 
+## Installation
+
+```bash
+npx skills add makefinks/bench-this
+```
+
 ## Supported setups
 
 The following harness and provider combinations are currently supported.
