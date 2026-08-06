@@ -47,6 +47,34 @@ def _score(values: Iterable[RunResult], attribute: str) -> tuple[int, int, str]:
     return passed, total, rendered
 
 
+def _token_metrics(values: Iterable[RunResult]) -> Dict[str, object]:
+    """Sum reported token buckets and derive cache-hit rate when cache reads exist."""
+
+    rows = list(values)
+    input_tokens = sum(row.input_tokens for row in rows)
+    cached_input_tokens = sum(row.cache_read_tokens for row in rows)
+    output_tokens = sum(row.output_tokens for row in rows)
+    reasoning_values = [
+        row.reasoning_tokens for row in rows if row.reasoning_tokens is not None
+    ]
+    reasoning_tokens = sum(reasoning_values) if reasoning_values else None
+    total_tokens = input_tokens + cached_input_tokens + output_tokens + (
+        reasoning_tokens or 0
+    )
+    input_total = input_tokens + cached_input_tokens
+    cache_hit_rate = (
+        f"{cached_input_tokens / input_total:.1%}" if cached_input_tokens else "—"
+    )
+    return {
+        "total": total_tokens,
+        "input": input_tokens,
+        "cached_input": cached_input_tokens,
+        "output": output_tokens,
+        "reasoning": reasoning_tokens if reasoning_tokens is not None else "—",
+        "cache_hit_rate": cache_hit_rate,
+    }
+
+
 def write_summary(path: Path, experiment_id: str, rows: Iterable[RunResult]) -> None:
     """Append one treatment summary without discarding earlier experiments."""
 
@@ -62,14 +90,14 @@ def write_summary(path: Path, experiment_id: str, rows: Iterable[RunResult]) -> 
         "",
         "### Configuration summary",
         "",
-        "| Configuration | Passed | Pass rate | Public | Hidden | Overall | Public tests modified | Avg tokens | Native cost | Estimated cost | Cost / success | Avg solver time | Avg runtime | Failures |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+        "| Configuration | Passed | Pass rate | Public | Hidden | Overall | Public tests modified | Total tokens | Input tokens | Cached input tokens | Output tokens | Reasoning tokens | Cache hit rate | Native cost | Estimated cost | Cost / success | Avg solver time | Avg runtime | Failures |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
     for (config_id, config_digest), values in sorted(
         groups.items(), key=lambda item: (item[0][0], item[0][1] or "")
     ):
         passed = sum(row.passed for row in values)
-        token_totals = [row.input_tokens + row.output_tokens for row in values]
+        metrics = _token_metrics(values)
         native = sum(row.native_cost_usd or 0 for row in values)
         estimated = sum(row.estimated_cost_usd or 0 for row in values)
         # Native and estimated costs are mutually exclusive per row. Combining
@@ -106,8 +134,9 @@ def write_summary(path: Path, experiment_id: str, rows: Iterable[RunResult]) -> 
         solver_runtime = f"{mean(solver_durations):.1f}s" if solver_durations else "—"
         lines.append(
             "| {config} | {passed}/{total} | {rate:.1%} | {public} | {hidden} | {overall} | "
-            "{mutations} | {tokens:.0f} | {native} | {estimated} | {per_success} | "
-            "{solver_runtime} | {runtime:.1f}s | {failures} |".format(
+            "{mutations} | {total_tokens:,} | {input_tokens:,} | {cached_input_tokens:,} | "
+            "{output_tokens:,} | {reasoning_tokens} | {cache_hit_rate} | {native} | "
+            "{estimated} | {per_success} | {solver_runtime} | {runtime:.1f}s | {failures} |".format(
                 config=(
                     f"{config_id}@{config_digest[:12]}"
                     if config_digest
@@ -120,7 +149,12 @@ def write_summary(path: Path, experiment_id: str, rows: Iterable[RunResult]) -> 
                 hidden=hidden_score,
                 overall=overall_score,
                 mutations=mutation_score,
-                tokens=mean(token_totals),
+                total_tokens=metrics["total"],
+                input_tokens=metrics["input"],
+                cached_input_tokens=metrics["cached_input"],
+                output_tokens=metrics["output"],
+                reasoning_tokens=metrics["reasoning"],
+                cache_hit_rate=metrics["cache_hit_rate"],
                 native=_money(native) if native else "—",
                 estimated=_money(estimated) if estimated else "—",
                 per_success=_money(known_cost / passed) if passed and known_cost else "—",
@@ -135,13 +169,14 @@ def write_summary(path: Path, experiment_id: str, rows: Iterable[RunResult]) -> 
             "",
             "### Task results",
             "",
-            "| Configuration | Task | Passed | Public | Hidden | Overall | Avg tokens | Cost | Avg solver time | Avg runtime | Failures |",
-            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+            "| Configuration | Task | Passed | Public | Hidden | Overall | Total tokens | Input tokens | Cached input tokens | Output tokens | Reasoning tokens | Cache hit rate | Cost | Avg solver time | Avg runtime | Failures |",
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
         ]
     )
     for (config_id, config_digest, task_id), values in sorted(
         task_groups.items(), key=lambda item: (item[0][0], item[0][1] or "", item[0][2])
     ):
+        metrics = _token_metrics(values)
         public_passed, public_total, public_score = _score(values, "public_test_results")
         hidden_passed, hidden_total, hidden_score = _score(values, "group_results")
         overall_passed = public_passed + hidden_passed
@@ -171,7 +206,9 @@ def write_summary(path: Path, experiment_id: str, rows: Iterable[RunResult]) -> 
         )
         lines.append(
             "| {config} | {task} | {passed}/{total} | {public} | {hidden} | {overall} | "
-            "{tokens:.0f} | {cost} | {solver_runtime} | {runtime:.1f}s | {failures} |".format(
+            "{total_tokens:,} | {input_tokens:,} | {cached_input_tokens:,} | {output_tokens:,} | "
+            "{reasoning_tokens} | {cache_hit_rate} | {cost} | {solver_runtime} | "
+            "{runtime:.1f}s | {failures} |".format(
                 config=(
                     f"{config_id}@{config_digest[:12]}"
                     if config_digest
@@ -183,7 +220,12 @@ def write_summary(path: Path, experiment_id: str, rows: Iterable[RunResult]) -> 
                 public=public_score,
                 hidden=hidden_score,
                 overall=overall_score,
-                tokens=mean(row.input_tokens + row.output_tokens for row in values),
+                total_tokens=metrics["total"],
+                input_tokens=metrics["input"],
+                cached_input_tokens=metrics["cached_input"],
+                output_tokens=metrics["output"],
+                reasoning_tokens=metrics["reasoning"],
+                cache_hit_rate=metrics["cache_hit_rate"],
                 cost=cost,
                 solver_runtime=(
                     f"{mean(solver_durations):.1f}s" if solver_durations else "—"
@@ -205,3 +247,5 @@ def write_summary(path: Path, experiment_id: str, rows: Iterable[RunResult]) -> 
         else:
             handle.write("# Benchmark summary\n\n")
         handle.write("\n".join(lines) + "\n")
+
+

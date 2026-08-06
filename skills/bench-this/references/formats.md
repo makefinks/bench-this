@@ -114,7 +114,23 @@ auth_profile: opencode-go
 arguments: []
 ```
 
-The `auth_profile` values `openai` and `opencode-go` are local labels under
+For OpenCode Zen, use its provider ID separately from the local auth-profile label:
+
+```yaml
+id: opencode-zen-deepseek-v4-flash-free
+harness: opencode
+provider: opencode
+model: deepseek-v4-flash-free
+agent: build
+harness_config: harness
+workspace_config: workspace
+auth_profile: opencode-zen
+arguments: []
+```
+
+The `opencode-zen` profile must be authenticated through OpenCode Zen before the treatment runs.
+
+The `auth_profile` values `openai`, `opencode-go`, and `opencode-zen` are local labels under
 `~/.agent-bench/auth/`. They happen to match the provider IDs in these examples, but profile labels
 do not select a provider. The `provider` field and matching `auth login --provider` argument do.
 

@@ -32,6 +32,7 @@ The following harness and provider combinations are currently supported.
 | Native Copilot CLI | GitHub Copilot                    |
 | OpenCode           | OpenAI (`openai`)                 |
 | OpenCode           | GitHub Copilot (`github-copilot`) |
+| OpenCode           | OpenCode Zen (`opencode`)         |
 | OpenCode           | OpenCode Go (`opencode-go`)       |
 | OpenCode           | Amazon Bedrock (`amazon-bedrock`) |
 
@@ -422,15 +423,17 @@ Failures are kept distinct so an agent is not blamed for a broken laboratory:
   errors, timeouts, and quota failures remain identifiable rather than becoming wrong answers.
 
 The summary reports pass rate, public and hidden completion, their combined total, public-test
-mutation telemetry, token use, solver and total runtime, costs when known, and failure counts.
-Provider-reported cost remains separate from locally estimated cost. The runner uses benchmark-
-defined `prices` first, then falls back to the live [Models.dev](https://models.dev/) provider
-catalog. Native Copilot CLI runs export content-free OpenTelemetry so cache and reasoning token
-buckets can contribute to this API-equivalent estimate; Copilot AI credits are not mislabeled as
-USD. A catalog outage or missing price leaves the estimate blank rather than failing a run. Hidden
-completion remains the primary correctness signal; the public/hidden split shows whether a solver
-generalized beyond visible examples. Per-phase durations in run rows and base/reference validation
-receipts support debugging setup, solver, and evaluator performance.
+mutation telemetry, total/input/cached-input/output/reasoning tokens, cache hit rate when cached
+input is present, solver and total runtime, costs when known, and failure counts. Provider-reported cost remains
+separate from locally estimated cost. The runner uses benchmark-defined `prices` first, then falls
+back to the live [Models.dev](https://models.dev/) provider catalog. Native Copilot CLI runs export
+content-free OpenTelemetry so cache and reasoning token buckets can contribute to this
+API-equivalent
+estimate; Copilot AI credits are not mislabeled as USD. A catalog outage or missing price leaves the
+estimate blank rather than failing a run. Hidden completion remains the primary correctness signal;
+the public/hidden split shows whether a solver generalized beyond visible examples. Per-phase
+durations in run rows and base/reference validation receipts support debugging setup, solver, and
+evaluator performance.
 
 ## Where the detailed contracts live
 

@@ -314,6 +314,29 @@ auth_profile: opencode-go
     assert config.qualified_model == "opencode-go/glm-5.2"
 
 
+
+def test_schema_accepts_opencode_zen_provider(tmp_path):
+    root = tmp_path / "opencode-zen"
+    (root / "harness").mkdir(parents=True)
+    (root / "workspace").mkdir()
+    path = write(
+        root / "configuration.yaml",
+        """id: opencode-zen
+harness: opencode
+provider: opencode
+model: deepseek-v4-flash-free
+agent: build
+harness_config: harness
+workspace_config: workspace
+auth_profile: opencode-zen
+""",
+    )
+    config = load_harness(path)
+
+    assert config.provider == "opencode"
+    assert config.qualified_model == "opencode/deepseek-v4-flash-free"
+
+
 def test_schema_accepts_amazon_bedrock_provider(tmp_path):
     root = tmp_path / "amazon-bedrock"
     (root / "harness").mkdir(parents=True)

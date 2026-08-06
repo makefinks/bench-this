@@ -24,6 +24,7 @@ SUPPORTED_OPENCODE_PROVIDERS = {
     AMAZON_BEDROCK_PROVIDER,
     "github-copilot",
     "openai",
+    "opencode",
     "opencode-go",
 }
 
