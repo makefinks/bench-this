@@ -424,7 +424,8 @@ Failures are kept distinct so an agent is not blamed for a broken laboratory:
 
 The summary reports pass rate, public and hidden completion, their combined total, public-test
 mutation telemetry, total/input/cached-input/output/reasoning tokens, cache hit rate when cached
-input is present, solver and total runtime, costs when known, and failure counts. Provider-reported cost remains
+input is present, solver and total runtime, costs when known, and failure counts. Provider-reported
+cost remains
 separate from locally estimated cost. The runner uses benchmark-defined `prices` first, then falls
 back to the live [Models.dev](https://models.dev/) provider catalog. Native Copilot CLI runs export
 content-free OpenTelemetry so cache and reasoning token buckets can contribute to this
@@ -445,8 +446,8 @@ evaluator performance.
   protocol, and command reference
 - [configuration.md](skills/bench-this/references/configuration.md) — treatments,
   authentication, and overlays
-- [reasoning-effort.md](skills/bench-this/references/reasoning-effort.md) —
-  harness-specific reasoning controls
+- [reasoning-effort.md](skills/bench-this/references/configuration/treatments/reasoning-effort.md) —
+  reasoning-effort treatment policy and harness-specific controls
 - [task-agent.md](skills/bench-this/references/task-agent.md) — worker isolation and
   task-authoring handoff contract
 - [task-verifier.md](skills/bench-this/references/task-verifier.md) — narrow read-only

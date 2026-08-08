@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Wrap repository Markdown prose at 100 columns without disturbing structure."""
+"""Wrap Markdown prose at 100 columns and align tables without constraining their width."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence
+from typing import Iterable, List, Optional, Sequence, Tuple
 
 
 DEFAULT_WIDTH = 100
@@ -18,6 +18,7 @@ LIST_RE = re.compile(r"^(\s*(?:[-+*]|\d+[.)])\s+)(.*)$")
 STRUCTURAL_RE = re.compile(
     r"^(?:\s{4}|\s*#|\s*\||\s*<|\s*\[.+\]:|\s*<!--|\s*[-*_]{3,}\s*$)"
 )
+TABLE_SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
 
 
 def repository_markdown(root: Path) -> List[Path]:
@@ -75,8 +76,95 @@ def _wrap_line(line: str, width: int) -> List[str]:
     return wrapped
 
 
+def _split_table_row(line: str) -> Optional[Tuple[str, List[str]]]:
+    """Return a table row's indentation and cells without splitting escaped pipes."""
+
+    indentation = line[: len(line) - len(line.lstrip(" "))]
+    stripped = line[len(indentation) :]
+    if len(indentation) >= 4 or not stripped.startswith("|") or not stripped.endswith("|"):
+        return None
+
+    cells: List[str] = []
+    current: List[str] = []
+    backslashes = 0
+    for character in stripped[1:-1]:
+        if character == "|" and backslashes % 2 == 0:
+            cells.append("".join(current).strip())
+            current = []
+        else:
+            current.append(character)
+        backslashes = backslashes + 1 if character == "\\" else 0
+    cells.append("".join(current).strip())
+    return indentation, cells
+
+
+def _separator_alignment(cell: str) -> Optional[str]:
+    """Return a valid separator cell's alignment, or None when it is not a separator."""
+
+    if not TABLE_SEPARATOR_RE.fullmatch(cell):
+        return None
+    if cell.startswith(":") and cell.endswith(":"):
+        return "center"
+    if cell.startswith(":"):
+        return "left"
+    if cell.endswith(":"):
+        return "right"
+    return "default"
+
+
+def _format_table(lines: Sequence[str], start: int) -> Optional[Tuple[List[str], int]]:
+    """Format one complete pipe table and return its output plus the next input index."""
+
+    if start + 1 >= len(lines):
+        return None
+    header = _split_table_row(lines[start])
+    separator = _split_table_row(lines[start + 1])
+    if header is None or separator is None:
+        return None
+
+    indentation, header_cells = header
+    separator_indentation, separator_cells = separator
+    if separator_indentation != indentation or len(separator_cells) != len(header_cells):
+        return None
+    alignments = [_separator_alignment(cell) for cell in separator_cells]
+    if any(alignment is None for alignment in alignments):
+        return None
+
+    rows = [header_cells, separator_cells]
+    next_index = start + 2
+    while next_index < len(lines):
+        row = _split_table_row(lines[next_index])
+        if row is None or row[0] != indentation or len(row[1]) != len(header_cells):
+            break
+        rows.append(row[1])
+        next_index += 1
+
+    widths: List[int] = []
+    for column, alignment in enumerate(alignments):
+        minimum = 5 if alignment == "center" else 4 if alignment in {"left", "right"} else 3
+        widths.append(max(minimum, *(len(row[column]) for row in rows if row is not separator_cells)))
+
+    formatted: List[str] = []
+    for row_index, row in enumerate(rows):
+        if row_index == 1:
+            rendered_cells = []
+            for width, alignment in zip(widths, alignments):
+                if alignment == "left":
+                    rendered_cells.append(":" + "-" * (width - 1))
+                elif alignment == "right":
+                    rendered_cells.append("-" * (width - 1) + ":")
+                elif alignment == "center":
+                    rendered_cells.append(":" + "-" * (width - 2) + ":")
+                else:
+                    rendered_cells.append("-" * width)
+        else:
+            rendered_cells = [cell.ljust(width) for cell, width in zip(row, widths)]
+        formatted.append(f"{indentation}| " + " | ".join(rendered_cells) + " |")
+    return formatted, next_index
+
+
 def format_markdown(text: str, width: int = DEFAULT_WIDTH) -> str:
-    """Wrap prose lines while preserving frontmatter, fences, and Markdown structure."""
+    """Wrap prose and align pipe tables while preserving other Markdown structure."""
 
     had_final_newline = text.endswith("\n")
     lines = text.splitlines()
@@ -84,12 +172,15 @@ def format_markdown(text: str, width: int = DEFAULT_WIDTH) -> str:
     in_frontmatter = bool(lines and lines[0].strip() == "---")
     in_fence = False
     fence_marker = ""
+    index = 0
 
-    for index, line in enumerate(lines):
+    while index < len(lines):
+        line = lines[index]
         if in_frontmatter:
             output.append(line)
             if index > 0 and line.strip() == "---":
                 in_frontmatter = False
+            index += 1
             continue
 
         fence = FENCE_RE.match(line)
@@ -102,12 +193,22 @@ def format_markdown(text: str, width: int = DEFAULT_WIDTH) -> str:
                 in_fence = False
                 fence_marker = ""
             output.append(line)
+            index += 1
             continue
 
         if in_fence:
             output.append(line)
+            index += 1
             continue
+
+        table = _format_table(lines, index)
+        if table is not None:
+            formatted_table, index = table
+            output.extend(formatted_table)
+            continue
+
         output.extend(_wrap_line(line, width))
+        index += 1
 
     formatted = "\n".join(output)
     return formatted + "\n" if had_final_newline else formatted

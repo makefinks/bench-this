@@ -11,7 +11,7 @@ def test_wraps_plain_and_list_prose_at_100_columns() -> None:
     assert formatted.splitlines()[-1].startswith("  ")
 
 
-def test_preserves_frontmatter_fences_tables_and_indented_code() -> None:
+def test_preserves_frontmatter_fences_table_like_lines_and_indented_code() -> None:
     text = """---
 description: this intentionally remains a single YAML scalar even when it is much longer than one hundred characters because frontmatter is data
 ---
@@ -25,6 +25,36 @@ value = "this code line intentionally remains longer than one hundred characters
 """
 
     assert format_markdown(text) == text
+
+
+def test_aligns_complete_tables_without_constraining_them_to_prose_width() -> None:
+    text = """| Name|Description|
+|---|---|
+|short|much longer cell|
+"""
+    expected = """| Name  | Description      |
+| ----- | ---------------- |
+| short | much longer cell |
+"""
+
+    formatted = format_markdown(text, width=10)
+
+    assert formatted == expected
+    assert max(map(len, formatted.splitlines())) > 10
+    assert format_markdown(formatted, width=10) == formatted
+
+
+def test_preserves_table_alignment_markers_and_escaped_pipes() -> None:
+    text = """| left | right | center |
+| :--- | ---: | :---: |
+| a \\| b | c | d |
+"""
+    expected = """| left   | right | center |
+| :----- | ----: | :----: |
+| a \\| b | c     | d      |
+"""
+
+    assert format_markdown(text) == expected
 
 
 def test_preserves_markdown_hard_break() -> None:

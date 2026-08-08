@@ -260,8 +260,8 @@ the named skill is applied to every solver task; copying `SKILL.md` without an a
 does not complete the configuration.
 
 When the user asks to set or compare reasoning effort, also read
-[references/reasoning-effort.md](references/reasoning-effort.md). Reasoning controls are
-harness-specific experimental inputs, not portable model settings.
+[references/configuration/treatments/reasoning-effort.md](references/configuration/treatments/reasoning-effort.md).
+Reasoning controls are harness-specific experimental inputs, not portable model settings.
 
 If the user already supplied the harness, provider where applicable, pinned model, and auth-profile
 name, use the bundled configuration generator without asking them to repeat those values. Otherwise,
@@ -270,7 +270,8 @@ to skip. Do not create it until the user approves; never infer authorization fro
 credential folders, or provider error suggestions.
 
 For Amazon Bedrock, never choose a missing model or region from memory. Use the live official AWS
-and OpenCode documentation linked in `references/configuration.md`, verify the exact model or
+and OpenCode documentation linked in
+`references/configuration/harnesses/opencode/providers/amazon-bedrock.md`, verify the exact model or
 inference-profile ID and a supported source region before making a recommendation. If current
 documentation cannot be fetched, ask the user for the missing values instead of guessing.
 
@@ -313,8 +314,9 @@ who chooses to execute the manual command in their own terminal.
 
 After authentication completes, run the matching `auth verify` command. For an existing unverified
 profile, offer verification or defer its source-free identity preflight until the user authorizes
-treatment execution. Follow [references/configuration.md](references/configuration.md) for exact
-commands and failure handling.
+treatment execution. Follow the routing table in
+[references/configuration.md](references/configuration.md) for exact harness and provider commands
+and failure handling.
 
 The bundled OpenCode Go example uses provider `opencode-go`, model `glm-5.2`, and the suggested
 profile label `opencode-go`. Treat profile labels as user-chosen names; they are separate from the
@@ -327,7 +329,8 @@ Configuring treatments or validating tasks does not authorize their execution. R
 when the user explicitly asks you to do so, and execute exactly the requested task, configuration,
 and repetition scope. Do not insert a one-cell pilot or otherwise narrow the run. Before executing a
 multi-cell matrix, inspect host and Docker CPU and memory, then follow the job-selection guidance in
-`references/configuration.md`; the CLI defaults to three workers, but you may pass a larger
+`references/configuration/execution.md`; the CLI defaults to three workers, but you may pass a
+higher
 `--jobs` value when resources support it. When the user will execute the commands, hand off the
 commands without inspecting resources or starting treatments. Diagnose failures through
 runner-owned logs and disposable staged homes. Treat optional skills or MCP servers as separate
