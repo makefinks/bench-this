@@ -10,6 +10,7 @@ the approved treatment:
 | Situation                         | Additional reference                                                                    |
 | --------------------------------- | --------------------------------------------------------------------------------------- |
 | OpenCode harness                  | [OpenCode](configuration/harnesses/opencode/index.md)                                   |
+| OpenCode Zen provider             | [OpenCode Zen](configuration/harnesses/opencode/index.md#opencode-zen)                  |
 | Native GitHub Copilot CLI harness | [Copilot CLI](configuration/harnesses/copilot-cli/index.md)                             |
 | Amazon Bedrock through OpenCode   | [OpenCode Bedrock](configuration/harnesses/opencode/providers/amazon-bedrock.md)        |
 | GitHub Copilot through OpenCode   | [OpenCode GitHub Copilot](configuration/harnesses/opencode/providers/github-copilot.md) |

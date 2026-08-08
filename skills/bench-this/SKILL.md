@@ -5,7 +5,7 @@ description: >-
   validate them with the bundled v1 runner. Use when selecting substantial deterministic changes,
   authoring behavior-focused prompts and hidden evaluators, scaffolding benchmark files, or
   validating base-fail/reference-pass tasks for Copilot CLI and OpenCode comparisons using
-  GitHub Copilot, OpenAI, OpenCode Go, or Amazon Bedrock authentication.
+  GitHub Copilot, OpenAI, OpenCode Zen, OpenCode Go, or Amazon Bedrock authentication.
 ---
 
 # Create a project benchmark
@@ -321,6 +321,9 @@ and failure handling.
 The bundled OpenCode Go example uses provider `opencode-go`, model `glm-5.2`, and the suggested
 profile label `opencode-go`. Treat profile labels as user-chosen names; they are separate from the
 provider and model.
+
+For OpenCode Zen, use provider `opencode`; the suggested profile label is `opencode-zen`. Provider
+IDs and profile labels are separate.
 
 The generator defaults to OpenCode for backwards compatibility. Use `--harness copilot` for native
 Copilot CLI treatments; provider is only valid with `--harness opencode`.

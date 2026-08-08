@@ -18,6 +18,7 @@ SUPPORTED_OPENCODE_PROVIDERS = {
     "amazon-bedrock",
     "github-copilot",
     "openai",
+    "opencode",
     "opencode-go",
 }
 GITHUB_COPILOT_BUSINESS_BASE_URL = "https://api.business.githubcopilot.com"

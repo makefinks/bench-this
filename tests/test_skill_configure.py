@@ -72,6 +72,28 @@ def test_creates_opencode_go_configuration(tmp_path: Path) -> None:
     assert config["enabled_providers"] == ["opencode-go"]
 
 
+def test_creates_opencode_zen_configuration(tmp_path: Path) -> None:
+    repository = scaffold(tmp_path)
+
+    result = run_configure(
+        repository,
+        "--provider",
+        "opencode",
+        "--model",
+        "deepseek-v4-flash-free",
+        "--auth-profile",
+        "opencode-zen",
+    )
+
+    assert result.returncode == 0, result.stderr
+    root = repository / "benchmarks/configurations/opencode-opencode-deepseek-v4-flash-free"
+    manifest = (root / "configuration.yaml").read_text()
+    assert "provider: opencode" in manifest
+    config = json.loads((root / "harness/opencode.json").read_text())
+    assert config["small_model"] == "opencode/deepseek-v4-flash-free"
+    assert config["enabled_providers"] == ["opencode"]
+
+
 def test_creates_amazon_bedrock_configuration(tmp_path: Path) -> None:
     repository = scaffold(tmp_path)
 

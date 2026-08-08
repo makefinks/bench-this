@@ -165,6 +165,7 @@ python <skill-directory>/scripts/scaffold.py .
 ./benchmarks/run.py auth login --harness opencode --provider github-copilot --profile copilot
 ./benchmarks/run.py auth login --harness opencode --provider openai --profile openai
 ./benchmarks/run.py auth login --harness opencode --provider opencode-go --profile opencode-go
+./benchmarks/run.py auth login --harness opencode --provider opencode --profile opencode-zen
 ./benchmarks/run.py doctor
 ./benchmarks/run.py run --task duplicate-email --configuration copilot-model-a
 ./benchmarks/run.py run --task duplicate-email --task another-task \

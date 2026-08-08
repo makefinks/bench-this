@@ -35,6 +35,27 @@ python <skill-directory>/scripts/configure.py <repository> \
 The suggested profile label is `opencode-go`. Profile labels are user-chosen names and are separate
 from the provider and model.
 
+## OpenCode Zen
+
+Use provider `opencode` for OpenCode Zen. The suggested `opencode-zen` profile label is separate
+from the provider and model:
+
+```bash
+python <skill-directory>/scripts/configure.py <repository> \
+  --harness opencode \
+  --provider opencode \
+  --model <pinned-model> \
+  --auth-profile opencode-zen
+```
+
+Authenticate and verify the matching provider and profile:
+
+```bash
+./benchmarks/run.py auth login --harness opencode \
+  --provider opencode --profile opencode-zen
+./benchmarks/run.py auth verify --harness opencode --profile opencode-zen
+```
+
 ## Authentication
 
 OpenCode providers other than Amazon Bedrock use the provider's normal OpenCode login. For manual
