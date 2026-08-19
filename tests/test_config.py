@@ -348,6 +348,7 @@ harness: opencode
 provider: amazon-bedrock
 model: eu.anthropic.claude-sonnet-4-5-v1:0
 agent: build
+region: eu-central-1
 harness_config: harness
 workspace_config: workspace
 auth_profile: bedrock
@@ -356,10 +357,35 @@ auth_profile: bedrock
     config = load_harness(path)
 
     assert config.provider == "amazon-bedrock"
+    assert config.region == "eu-central-1"
     assert (
         config.qualified_model
         == "amazon-bedrock/eu.anthropic.claude-sonnet-4-5-v1:0"
     )
+
+
+@pytest.mark.parametrize("region", [None, "", "us-east", 1])
+def test_schema_requires_valid_region_for_amazon_bedrock(tmp_path, region):
+    root = tmp_path / "amazon-bedrock"
+    (root / "harness").mkdir(parents=True)
+    (root / "workspace").mkdir()
+    region_line = "" if region is None else f"region: {region}\n"
+    path = write(
+        root / "configuration.yaml",
+        """id: amazon-bedrock
+harness: omp
+provider: amazon-bedrock
+model: fixed-model
+"""
+        + region_line
+        + """harness_config: harness
+workspace_config: workspace
+auth_profile: bedrock
+""",
+    )
+
+    with pytest.raises(ConfigurationError, match="require a valid region"):
+        load_harness(path)
 
 
 def test_schema_rejects_path_escape(tmp_path):

@@ -270,10 +270,9 @@ to skip. Do not create it until the user approves; never infer authorization fro
 credential folders, or provider error suggestions.
 
 For Amazon Bedrock, never choose a missing model or region from memory. Use the live official AWS
-and OpenCode documentation linked in
-`references/configuration/harnesses/opencode/providers/amazon-bedrock.md`, verify the exact model or
-inference-profile ID and a supported source region before making a recommendation. If current
-documentation cannot be fetched, ask the user for the missing values instead of guessing.
+and harness documentation linked from the selected harness's provider reference, then verify the
+exact model or inference-profile ID and a supported source region before making a recommendation. If
+current documentation cannot be fetched, ask the user for the missing values instead of guessing.
 
 Treat names such as `copilot-auth` as profile labels, not proof of the intended harness or Copilot
 subscription. Before configuring an ambiguous Copilot treatment, confirm whether it means native
@@ -282,35 +281,25 @@ whether the account uses Copilot Business. Pass `--github-copilot-business` only
 confirms it; never ask for or accept an arbitrary provider base URL.
 
 After creating the approved configurations, derive the unique harness, provider, and auth-profile
-requirements from those configurations. Check only for the exact benchmark-owned profile at
+requirements from those configurations. Run `./benchmarks/run.py build` once after all approved
+configurations exist so the image contains exactly their configured harness executables. Complete
+this build before authentication verification, `doctor`, or treatment execution. Check only for
+the exact benchmark-owned profile at
 `~/.agent-bench/auth/<profile>/<harness>/`. Reuse it when present, but never import credentials from
 the user's normal Copilot, OpenCode, GitHub CLI, browser, or home-directory state. An existing
 benchmark profile avoids another login; it still does not authorize a treatment run.
 
-For every missing benchmark profile, tell the user which approved configurations require it and ask
-whether to start the runner's authentication setup or provide the exact command for the user to run.
-Do not start authentication merely because a configuration was created, and do not authenticate
-unused harnesses or providers. For an interactive OpenCode or native Copilot route, invoke
-`./benchmarks/run.py auth login` with the exact harness, provider when applicable, and profile.
-Follow the non-interactive exception below for Amazon Bedrock.
-
-For OpenCode OAuth and native Copilot CLI, surface the device URL or code. Wait while the user
-personally authorizes access. Never request, receive, or enter a password. If a provider without a
-runner-managed credential route asks for an API key, give the user the command to execute directly.
-Do not receive its secret.
-
-Amazon Bedrock is the runner-managed exception. Confirm the region as part of the treatment and ask
-the user to supply the Bedrock API key after they authorize creating or replacing the named profile.
-Do not start `auth login` in an agent-assisted setup because its hidden prompt can block an
-orchestrator that cannot supply interactive input. Instead, invoke the bundled
-`scripts/provision_auth.py` helper with the repository, OpenCode harness, Bedrock provider, and
-profile. Supply the token through the helper process's `AGENT_BENCH_BEDROCK_API_KEY` environment
-entry using the execution API, never through a shell prefix or command argument. The helper is
-non-interactive and must fail immediately when that entry is absent. Never repeat or log the token.
-The runner later injects the stored token as `AWS_BEARER_TOKEN_BEDROCK`.
-
-Reserve `./benchmarks/run.py auth login --harness opencode --provider amazon-bedrock ...` for a user
-who chooses to execute the manual command in their own terminal.
+For every missing benchmark profile, tell the user which approved configurations require it and
+follow the selected harness and provider references to offer only their supported setup options.
+Start an assisted authentication flow only when that reference defines one; otherwise, provide the
+exact command for the user to run. Do not start authentication merely because a configuration was
+created, and do not authenticate unused harnesses or providers. During assisted authentication,
+relay any device URL or one-time code and wait for the user to finish authorization. Never request
+or handle passwords. Receive an API key only where the harness or provider reference defines a
+non-interactive benchmark-safe route, such as the Bedrock helper; otherwise, have the user execute
+the command directly. Follow the harness and provider references reached from
+[references/configuration.md](references/configuration.md)
+for the exact assisted or manual flow and commands.
 
 After authentication completes, run the matching `auth verify` command. For an existing unverified
 profile, offer verification or defer its source-free identity preflight until the user authorizes
@@ -325,8 +314,9 @@ provider and model.
 For OpenCode Zen, use provider `opencode`; the suggested profile label is `opencode-zen`. Provider
 IDs and profile labels are separate.
 
-The generator defaults to OpenCode for backwards compatibility. Use `--harness copilot` for native
-Copilot CLI treatments; provider is only valid with `--harness opencode`.
+The generator defaults to OpenCode. Use `--harness copilot` for native
+Copilot CLI treatments or `--harness omp` for Oh My Pi treatments. Provider is valid with OpenCode
+and Oh My Pi, with each harness's supported provider set.
 
 Configuring treatments or validating tasks does not authorize their execution. Run treatments only
 when the user explicitly asks you to do so, and execute exactly the requested task, configuration,

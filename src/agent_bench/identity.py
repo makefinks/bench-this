@@ -81,6 +81,7 @@ def configuration_digest(config: HarnessConfig) -> str:
             "provider": config.provider,
             "model": config.model,
             "agent": config.agent,
+            "region": config.region,
             "auth_profile": config.auth_profile,
             "arguments": config.arguments,
         },

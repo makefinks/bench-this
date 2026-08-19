@@ -108,12 +108,13 @@ class HarnessConfig:
     arguments: List[str]
     provider: Optional[str] = None
     agent: Optional[str] = None
+    region: Optional[str] = None
 
     @property
     def qualified_model(self) -> str:
-        """Return the provider-qualified model syntax expected by OpenCode."""
+        """Return provider-qualified syntax for harnesses that support it."""
 
-        if self.harness == "opencode":
+        if self.harness in {"opencode", "omp"}:
             return f"{self.provider}/{self.model}"
         return self.model
 

@@ -5,19 +5,31 @@ tasks exist and the user accepts your configuration offer. Task creation and det
 validation do not require a treatment.
 
 This file owns the rules shared by every harness. Read only the additional references required by
-the approved treatment:
+the approved treatment.
 
-| Situation                         | Additional reference                                                                    |
-| --------------------------------- | --------------------------------------------------------------------------------------- |
-| OpenCode harness                  | [OpenCode](configuration/harnesses/opencode/index.md)                                   |
-| OpenCode Zen provider             | [OpenCode Zen](configuration/harnesses/opencode/index.md#opencode-zen)                  |
-| Native GitHub Copilot CLI harness | [Copilot CLI](configuration/harnesses/copilot-cli/index.md)                             |
-| Amazon Bedrock through OpenCode   | [OpenCode Bedrock](configuration/harnesses/opencode/providers/amazon-bedrock.md)        |
-| GitHub Copilot through OpenCode   | [OpenCode GitHub Copilot](configuration/harnesses/opencode/providers/github-copilot.md) |
-| Skill treatment                   | [Skills](configuration/treatments/skills.md)                                            |
-| MCP treatment                     | [MCP policy](configuration/treatments/mcp.md) and the selected harness's MCP reference  |
-| Treatment execution or reporting  | [Execution and reporting](configuration/execution.md)                                   |
-| Reasoning-effort treatment        | [Reasoning effort](configuration/treatments/reasoning-effort.md)                        |
+## Harness and provider references
+
+Read the row for the approved harness and provider. A provider-specific page extends the harness
+page for that combination:
+
+| Harness     | Provider                     | Additional reference                                                                                                                     |
+| ----------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenCode    | openai, opencode-go          | [OpenCode](configuration/harnesses/opencode/index.md)                                                                                    |
+| OpenCode    | opencode (Zen)               | [OpenCode Zen](configuration/harnesses/opencode/index.md#opencode-zen)                                                                   |
+| OpenCode    | amazon-bedrock               | [OpenCode](configuration/harnesses/opencode/index.md) and [Amazon Bedrock](configuration/harnesses/opencode/providers/amazon-bedrock.md) |
+| OpenCode    | github-copilot               | [OpenCode](configuration/harnesses/opencode/index.md) and [GitHub Copilot](configuration/harnesses/opencode/providers/github-copilot.md) |
+| Copilot CLI | none                         | [Copilot CLI](configuration/harnesses/copilot-cli/index.md)                                                                              |
+| Oh My Pi    | github-copilot, openai-codex | [Oh My Pi](configuration/harnesses/omp/index.md)                                                                                         |
+| Oh My Pi    | amazon-bedrock               | [Oh My Pi](configuration/harnesses/omp/index.md) and [Amazon Bedrock](configuration/harnesses/omp/providers/amazon-bedrock.md)           |
+
+## Treatment and execution references
+
+| Situation                        | Additional reference                                                                   |
+| -------------------------------- | -------------------------------------------------------------------------------------- |
+| Skill treatment                  | [Skills](configuration/treatments/skills.md)                                           |
+| MCP treatment                    | [MCP policy](configuration/treatments/mcp.md) and the selected harness's MCP reference |
+| Reasoning-effort treatment       | [Reasoning effort](configuration/treatments/reasoning-effort.md)                       |
+| Treatment execution or reporting | [Execution and reporting](configuration/execution.md)                                  |
 
 ## Minimal decision
 
@@ -59,9 +71,10 @@ translate credentials from the user's ordinary `~/.copilot`, OpenCode, GitHub CL
 keychain state. Do not copy a complete home directory. The benchmark profile is deliberately
 separate so the runner can stage only the selected credentials into a disposable home.
 
-For each missing profile, identify the configurations that need it and ask whether the user wants
-agent-assisted authentication or the exact command to run themselves. Configuration approval alone
-does not authorize starting authentication.
+For each missing profile, identify the configurations that need it and follow the selected harness
+and provider references to offer only their supported setup options. Ask whether the user wants an
+agent-assisted flow when one is supported or the exact command to run themselves. Configuration
+approval alone does not authorize starting authentication.
 
 Read the selected harness reference for its normal authentication and verification commands. Also
 read the harness/provider reference when one exists: provider integrations can replace the normal

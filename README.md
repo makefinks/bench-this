@@ -35,6 +35,9 @@ The following harness and provider combinations are currently supported.
 | OpenCode           | OpenCode Zen (`opencode`)         |
 | OpenCode           | OpenCode Go (`opencode-go`)       |
 | OpenCode           | Amazon Bedrock (`amazon-bedrock`) |
+| Oh My Pi           | GitHub Copilot (`github-copilot`) |
+| Oh My Pi           | OpenAI Codex (`openai-codex`)     |
+| Oh My Pi           | Amazon Bedrock (`amazon-bedrock`) |
 
 See [configuration.md](skills/bench-this/references/configuration.md) for setup commands and
 reproducibility rules.
@@ -114,7 +117,7 @@ The target repository receives a self-contained benchmark:
 benchmarks/
 ├── run.py                 # The command-line entry point
 ├── benchmark.yaml         # Shared image, setup, timeouts, and defaults
-├── Dockerfile             # Project toolchain plus agent harnesses
+├── Dockerfile             # Project toolchain plus selected agent harnesses
 ├── setup.sh               # Installs dependencies in an exported workspace
 ├── tasks/
 │   └── <task-id>/
@@ -131,6 +134,9 @@ benchmarks/
 The runner is vendored on purpose. A generated benchmark should work without installing
 runner-specific dependencies. The agent invokes it directly, and you can do the same when inspecting
 or diagnosing a benchmark.
+
+`run.py build` renders the Dockerfile's harness-install block from the configured treatments. Only
+the selected harness CLIs are installed; task validation itself does not require an agent CLI.
 
 ### 3. The agent proves the task is real
 
@@ -423,18 +429,17 @@ Failures are kept distinct so an agent is not blamed for a broken laboratory:
   errors, timeouts, and quota failures remain identifiable rather than becoming wrong answers.
 
 The summary reports pass rate, public and hidden completion, their combined total, public-test
-mutation telemetry, total/input/cached-input/output/reasoning tokens, cache hit rate when cached
-input is present, solver and total runtime, costs when known, and failure counts. Provider-reported
-cost remains
-separate from locally estimated cost. The runner uses benchmark-defined `prices` first, then falls
-back to the live [Models.dev](https://models.dev/) provider catalog. Native Copilot CLI runs export
-content-free OpenTelemetry so cache and reasoning token buckets can contribute to this
-API-equivalent
-estimate; Copilot AI credits are not mislabeled as USD. A catalog outage or missing price leaves the
-estimate blank rather than failing a run. Hidden completion remains the primary correctness signal;
-the public/hidden split shows whether a solver generalized beyond visible examples. Per-phase
-durations in run rows and base/reference validation receipts support debugging setup, solver, and
-evaluator performance.
+mutation telemetry, total/input/cached-input/cache-write/output/reasoning tokens, cache hit rate
+when cached input is present, solver and total runtime, costs when known, and failure counts.
+Provider-reported cost remains separate from locally estimated cost. The runner uses
+benchmark-defined `prices` first, then falls back to the live
+[Models.dev](https://models.dev/) provider catalog. Native Copilot CLI runs export content-free
+OpenTelemetry so cache and reasoning token buckets can contribute to this API-equivalent estimate;
+Copilot AI credits are not mislabeled as USD. A catalog outage or missing price leaves the estimate
+blank rather than failing a run. Hidden completion remains the primary correctness signal; the
+public/hidden split shows whether a solver generalized beyond visible examples. Per-phase durations
+in run rows and base/reference validation receipts support debugging setup, solver, and evaluator
+performance.
 
 ## Where the detailed contracts live
 
