@@ -47,23 +47,59 @@ points in history:
 base commit                         reference commit
 feature does not exist              feature works
        │                                  │
-       └──── choose and verify behavior ──┘
-                         │
-                         ▼
-       author public prompt, public tests,
-                    and hidden tests
-                         │
-                         ▼
-              give an agent the task
-                         │
-                         ▼
-          run public and hidden evaluators
+       └── find: probe behavior at both ──┘
+           ends, shortlist candidates,
+           and stop for your approval
+                          │
+                          ▼
+     approve: you choose which candidates become
+     tasks; one coordinator agent runs the rest
+                          │
+                          ▼
+     prepare: the coordinator builds a separate scratch
+     workspace for each approved task
+                          │
+                          ▼
+     task agents × N work in parallel; each authors a
+     prompt plus public and hidden test suites, organized
+     into independently evaluated requirement groups
+                          │
+                          ▼
+     verifier agents × N work in parallel; each checks
+     one bundle without editing it
+                          │
+                          ▼
+     review: the coordinator reads every bundle,
+     fixes what it can, and accepts each task once
+                          │
+                          ▼
+     build: the coordinator combines shared setup needs
+     and proves the benchmark's Docker image builds
+                          │
+                          ▼
+     validate: each task's public and hidden tests run
+     against both commits; both suites must fail on the
+     base for the requested behavior and pass on reference
+                          │
+                          ▼
+     configure: define benchmark treatments or tell the agent
+     which setups you want to test and compare
+                          │
+                          ▼
+     run: evaluate each configured task/treatment pair in
+     an isolated container. The solver receives the public
+     prompt, public tests, and a writable base-commit workspace.
+     Git history, authenticated host CLIs, and hidden tests
+     remain inaccessible
+                          │
+                          ▼
+     compare: inspect results by configuration and task,
+     including pass rate, token usage, cost, runtime,
+     and failure reasons
+
 ```
 
-Before comparing agents, the benchmark proves that the evaluator fails on the base commit and
-passes on the reference commit. The reference is a calibration point, not a patch shown to the
-agent. During a measured run, the agent sees only the base source, the public prompt, and any
-deliberately public task files.
+The reference commit calibrates the evaluator; solver agents never see its patch.
 
 That gives the experiment a useful question:
 
