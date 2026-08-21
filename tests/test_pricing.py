@@ -75,6 +75,27 @@ def test_models_dev_price_maps_provider_rates_and_caches(monkeypatch):
     assert calls == [("https://models.dev/api.json", 1.5)]
 
 
+def test_models_dev_price_resolves_provider_alias(monkeypatch):
+    payload = {
+        "openai": {
+            "models": {
+                "model": {"cost": {"input": 1, "output": 4, "cache_read": 0.2}}
+            }
+        }
+    }
+    monkeypatch.setattr(
+        "agent_bench.pricing.urllib.request.urlopen",
+        lambda request, timeout: Response(json.dumps(payload).encode()),
+    )
+    pricing = ModelsDevPricing()
+
+    # models.dev does not list OAuth wrappers like openai-codex directly.
+    assert pricing.price("openai-codex", "model") == ModelPrice(
+        1, 4, reasoning_per_million_usd=4, cache_read_per_million_usd=0.2
+    )
+    assert pricing.price("unknown-provider", "model") is None
+
+
 @pytest.mark.parametrize(
     "payload",
     [b"not-json", b"[]", b'{"openai":{"models":{"model":{"cost":{"input":1}}}}}'],
@@ -108,6 +129,25 @@ def test_estimate_prefers_benchmark_price(tmp_path):
     usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000, reasoning_tokens=1_000_000)
 
     assert runner._estimate(config(tmp_path), usage) == 8
+
+
+def test_estimate_computes_alongside_native_cost(tmp_path):
+    # Provider-reported cost must not suppress the list-price estimate:
+    # both columns exist so divergence stays visible in summaries.
+    local = ModelPrice(2, 3, reasoning_per_million_usd=3)
+
+    class UnexpectedPricing:
+        def price(self, provider, model):
+            raise AssertionError("benchmark price should bypass Models.dev")
+
+    runner = BenchmarkRunner(project(tmp_path, {"model": local}), pricing=UnexpectedPricing())
+    usage = Usage(
+        input_tokens=1_000_000,
+        native_cost_usd=5,
+    )
+
+    assert usage.native_cost_usd is not None
+    assert runner._estimate(config(tmp_path), usage) == 2
 
 
 def test_estimate_falls_back_to_models_dev(tmp_path):

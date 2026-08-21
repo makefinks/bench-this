@@ -27,6 +27,8 @@ SUPPORTED_OPENCODE_PROVIDERS = {
     "opencode",
     "opencode-go",
 }
+SUPPORTED_OMP_PROVIDERS = {AMAZON_BEDROCK_PROVIDER, "github-copilot", "openai-codex"}
+AWS_REGION_PATTERN = re.compile(r"^[a-z]{2}(?:-[a-z0-9]+)+-[0-9]+$")
 
 
 def _load_mapping(path: Path) -> Dict[str, Any]:
@@ -287,20 +289,21 @@ def load_harness(path: Path) -> HarnessConfig:
             f"configuration id {config_id!r} must match directory {path.parent.name!r}"
         )
     harness = data["harness"]
-    if harness not in {"copilot", "opencode"}:
-        raise ConfigurationError(f"{path}: harness must be copilot or opencode")
+    if harness not in {"copilot", "opencode", "omp"}:
+        raise ConfigurationError(f"{path}: harness must be copilot, omp, or opencode")
     model = data["model"]
     if not isinstance(model, str) or not model.strip() or model == "auto":
         raise ConfigurationError(f"{path}: model must be explicitly pinned")
     provider = data.get("provider")
     agent = data.get("agent")
-    if harness == "opencode":
-        if provider not in SUPPORTED_OPENCODE_PROVIDERS:
-            supported = ", ".join(sorted(SUPPORTED_OPENCODE_PROVIDERS))
+    if harness in {"opencode", "omp"}:
+        supported_providers = SUPPORTED_OPENCODE_PROVIDERS if harness == "opencode" else SUPPORTED_OMP_PROVIDERS
+        if provider not in supported_providers:
+            supported = ", ".join(sorted(supported_providers))
             raise ConfigurationError(
-                f"v1 OpenCode provider must be one of: {supported}"
+                f"{harness} provider must be one of: {supported}"
             )
-        if not isinstance(agent, str) or not agent:
+        if harness == "opencode" and (not isinstance(agent, str) or not agent):
             raise ConfigurationError("OpenCode configurations require an agent")
     arguments = data.get("arguments", [])
     if not isinstance(arguments, list) or not all(isinstance(item, str) for item in arguments):
@@ -314,6 +317,13 @@ def load_harness(path: Path) -> HarnessConfig:
         _relative_path(path.parent, data["workspace_config"], "workspace_config"),
         "workspace_config",
     )
+    region = data.get("region")
+    if provider == AMAZON_BEDROCK_PROVIDER and (
+        not isinstance(region, str) or not AWS_REGION_PATTERN.fullmatch(region)
+    ):
+        raise ConfigurationError(
+            f"{path}: Amazon Bedrock configurations require a valid region"
+        )
     return HarnessConfig(
         root=path.parent,
         id=config_id,
@@ -321,6 +331,7 @@ def load_harness(path: Path) -> HarnessConfig:
         model=model,
         provider=provider,
         agent=agent,
+        region=region,
         harness_config=harness_config,
         workspace_config=workspace_config,
         auth_profile=auth_profile,

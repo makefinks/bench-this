@@ -13,6 +13,7 @@ from agent_bench.workspace import (
     auth_environment,
     stage_home,
     store_bedrock_api_key,
+    store_omp_credential,
     validate_auth_profile,
 )
 
@@ -149,3 +150,81 @@ def test_bedrock_login_stores_runner_managed_token(tmp_path, monkeypatch):
         ).read_text(encoding="utf-8")
     )
     assert credentials == {BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"}
+
+
+def test_omp_bedrock_profile_injects_only_selected_provider_token(tmp_path):
+    auth_root = tmp_path / "auth"
+    root = tmp_path / "configuration"
+    (root / "harness").mkdir(parents=True)
+    (root / "workspace").mkdir()
+    config = HarnessConfig(
+        root=root,
+        id="omp-codex",
+        harness="omp",
+        provider="amazon-bedrock",
+        model="gpt-fixed",
+        harness_config=root / "harness",
+        workspace_config=root / "workspace",
+        auth_profile="codex",
+        arguments=[],
+    )
+
+    profile = store_omp_credential(
+        "bedrock", "amazon-bedrock", "fixture-token", auth_root
+    )
+
+    config = HarnessConfig(**{**config.__dict__, "auth_profile": "bedrock"})
+    credentials = json.loads(
+        (profile / BEDROCK_CREDENTIALS_FILE).read_text(encoding="utf-8")
+    )
+    assert credentials == {BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"}
+    assert auth_environment(auth_root=auth_root, config=config) == {
+        BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"
+    }
+    home = tmp_path / "home"
+    stage_home(config, home, auth_root)
+    assert not (home / ".omp/agent/agent.db").exists()
+    assert not (home / "credentials.json").exists()
+
+
+def test_omp_oauth_profile_stages_native_database_without_environment_token(tmp_path):
+    auth_root = tmp_path / "auth"
+    profile = auth_root / "codex" / "omp" / ".omp" / "agent"
+    profile.mkdir(parents=True)
+    (profile / "agent.db").write_bytes(b"fixture-database")
+    root = tmp_path / "configuration"
+    (root / "harness").mkdir(parents=True)
+    (root / "workspace").mkdir()
+    (root / "harness/config.yaml").write_text("theme: fixture\n", encoding="utf-8")
+    config = HarnessConfig(
+        root=root,
+        id="omp-codex",
+        harness="omp",
+        provider="openai-codex",
+        model="gpt-fixed",
+        harness_config=root / "harness",
+        workspace_config=root / "workspace",
+        auth_profile="codex",
+        arguments=[],
+    )
+
+    assert auth_environment(auth_root=auth_root, config=config) == {}
+    home = tmp_path / "home"
+    stage_home(config, home, auth_root)
+    assert (home / ".omp/agent/agent.db").read_bytes() == b"fixture-database"
+    assert (home / ".omp/agent/config.yaml").read_text(encoding="utf-8") == "theme: fixture\n"
+    assert not (home / ".omp/config.yaml").exists()
+
+
+def test_login_rejects_provider_not_supported_by_selected_harness(tmp_path, monkeypatch):
+    destination = tmp_path / "auth"
+    monkeypatch.setattr(
+        "agent_bench.cli.auth_profile_root",
+        lambda profile, harness: destination / profile / harness,
+    )
+    project = type("Project", (), {"image": type("Image", (), {"name": "unused"})()})()
+
+    with pytest.raises(ConfigurationError, match="OpenCode login requires --provider"):
+        _login(project, "opencode", "work", "openai-codex")
+
+    assert not destination.exists()

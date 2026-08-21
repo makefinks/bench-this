@@ -3,6 +3,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from agent_bench.config import load_harness
+
 
 SCRIPT = (
     Path(__file__).parents[1]
@@ -118,6 +120,8 @@ def test_creates_amazon_bedrock_configuration(tmp_path: Path) -> None:
     assert "provider: amazon-bedrock" in (
         root / "configuration.yaml"
     ).read_text()
+    assert "region: eu-central-1" in (root / "configuration.yaml").read_text()
+    assert load_harness(root / "configuration.yaml").region == "eu-central-1"
     config = json.loads((root / "harness/opencode.json").read_text())
     assert config["enabled_providers"] == ["amazon-bedrock"]
     assert config["provider"] == {
@@ -261,6 +265,30 @@ def test_creates_native_copilot_configuration(tmp_path: Path) -> None:
     assert "agent:" not in manifest
     assert not (root / "harness/opencode.json").exists()
     assert (root / "harness").is_dir()
+
+
+def test_creates_omp_bedrock_configuration(tmp_path: Path) -> None:
+    repository = scaffold(tmp_path)
+    result = run_configure(
+        repository,
+        "--harness",
+        "omp",
+        "--provider",
+        "amazon-bedrock",
+        "--bedrock-region",
+        "eu-west-1",
+        "--model",
+        "eu.anthropic.claude-sonnet-4-6",
+        "--auth-profile",
+        "bedrock",
+    )
+    assert result.returncode == 0, result.stderr
+    root = repository / "benchmarks/configurations/omp-amazon-bedrock-eu-anthropic-claude-sonnet-4-6"
+    manifest = (root / "configuration.yaml").read_text()
+    assert "harness: omp" in manifest
+    assert "provider: amazon-bedrock" in manifest
+    assert "region: eu-west-1" in manifest
+    assert not (root / "harness/opencode.json").exists()
     assert (root / "workspace").is_dir()
 
 

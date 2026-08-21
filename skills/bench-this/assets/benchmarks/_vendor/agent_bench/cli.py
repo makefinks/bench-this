@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .config import (
     AMAZON_BEDROCK_PROVIDER,
+    SUPPORTED_OMP_PROVIDERS,
     SUPPORTED_OPENCODE_PROVIDERS,
     discover_harnesses,
     discover_tasks,
@@ -20,7 +21,7 @@ from .errors import BenchmarkError, ConfigurationError, InfrastructureError
 from .harnesses import adapter_for
 from .runner import DEFAULT_JOBS, BenchmarkRunner
 from .scaffold import scaffold
-from .workspace import auth_profile_root, store_bedrock_api_key
+from .workspace import auth_profile_root, store_bedrock_api_key, store_omp_credential
 
 
 def _benchmark_dir(value: str) -> Path:
@@ -80,12 +81,15 @@ def _parser() -> argparse.ArgumentParser:
     auth = commands.add_parser("auth")
     auth_commands = auth.add_subparsers(dest="auth_command", required=True)
     login = auth_commands.add_parser("login")
-    login.add_argument("--harness", choices=("copilot", "opencode"), required=True)
+    login.add_argument("--harness", choices=("copilot", "omp", "opencode"), required=True)
     login.add_argument("--profile", required=True)
-    login.add_argument("--provider", choices=sorted(SUPPORTED_OPENCODE_PROVIDERS))
+    login.add_argument(
+        "--provider",
+        choices=sorted(SUPPORTED_OPENCODE_PROVIDERS | SUPPORTED_OMP_PROVIDERS),
+    )
     verify = auth_commands.add_parser("verify")
     verify.add_argument("--profile", required=True)
-    verify.add_argument("--harness", choices=("copilot", "opencode"))
+    verify.add_argument("--harness", choices=("copilot", "omp", "opencode"))
     return parser
 
 
@@ -94,19 +98,40 @@ def _login(project, harness: str, profile: str, provider=None) -> None:
 
     if not profile.replace("-", "").isalnum() or profile.lower() != profile:
         raise ConfigurationError("profile must use lowercase letters, digits, and hyphens")
+    if harness == "copilot" and provider is not None:
+        raise ConfigurationError("--provider applies only to OpenCode and OMP")
+    if harness == "opencode" and provider not in SUPPORTED_OPENCODE_PROVIDERS:
+        raise ConfigurationError(
+            "OpenCode login requires --provider "
+            + ", ".join(sorted(SUPPORTED_OPENCODE_PROVIDERS))
+        )
+    if harness == "omp" and provider not in SUPPORTED_OMP_PROVIDERS:
+        raise ConfigurationError(
+            "OMP login requires --provider "
+            + ", ".join(sorted(SUPPORTED_OMP_PROVIDERS))
+        )
     destination = auth_profile_root(profile, harness)
     destination.mkdir(parents=True, exist_ok=True)
+    if harness == "omp":
+        if provider == AMAZON_BEDROCK_PROVIDER:
+            token = getpass.getpass(f"{provider} API token: ")
+            store_omp_credential(profile, provider, token)
+        else:
+            omp_root = destination / ".omp"
+            raise ConfigurationError(
+                "OMP OAuth login must be completed in the user's terminal. Run:\n"
+                f"PI_CODING_AGENT_DIR={omp_root / 'agent'} omp\n"
+                f"Then run /login {provider} inside OMP and retry."
+            )
+        print(f"Saved {harness} profile under {destination}")
+        return
     engine = DockerEngine()
     environment = {"HOME": "/home/bench", "NO_COLOR": "1"}
     if harness == "copilot":
-        if provider is not None:
-            raise ConfigurationError("--provider applies only to the OpenCode harness")
         environment["COPILOT_HOME"] = "/home/bench/.copilot"
         command = ["copilot"]
         print("In Copilot CLI, run /login, finish the device flow, then exit with Ctrl-D.")
     else:
-        if provider is None:
-            raise ConfigurationError("OpenCode login requires an explicit --provider")
         if provider == AMAZON_BEDROCK_PROVIDER:
             token = getpass.getpass("Amazon Bedrock API key: ")
             store_bedrock_api_key(profile, token)

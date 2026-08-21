@@ -66,7 +66,10 @@ def _usage_from_mapping(value: Dict[str, Any]) -> Tuple[int, int, int, int, int]
             _number(
                 value.get(
                     "cache_read",
-                    value.get("cache_read_tokens", value.get("cacheReadTokens", cache.get("read"))),
+                    value.get(
+                        "cache_read_tokens",
+                        value.get("cacheReadTokens", value.get("cacheRead", cache.get("read"))),
+                    ),
                 )
             )
         ),
@@ -74,7 +77,10 @@ def _usage_from_mapping(value: Dict[str, Any]) -> Tuple[int, int, int, int, int]
             _number(
                 value.get(
                     "cache_write",
-                    value.get("cache_write_tokens", value.get("cacheWriteTokens", cache.get("write"))),
+                    value.get(
+                        "cache_write_tokens",
+                        value.get("cacheWriteTokens", value.get("cacheWrite", cache.get("write"))),
+                    ),
                 )
             )
         ),
@@ -145,9 +151,93 @@ def parse_usage(text: str) -> Usage:
                 cache_write_tokens += cache_write
             direct_cost = _number(mapping.get("native_cost_usd"))
             if not direct_cost and ("tokens" in mapping or "usage" in mapping):
-                direct_cost = _number(mapping.get("cost"))
+                cost_value = mapping.get("cost")
+                if isinstance(cost_value, dict):
+                    direct_cost = _number(cost_value.get("total"))
+                else:
+                    direct_cost = _number(cost_value)
             if direct_cost > 0:
                 costs.append(direct_cost)
+    return Usage(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        reasoning_tokens=reasoning_tokens if reasoning_seen else None,
+        cache_read_tokens=cache_read_tokens,
+        cache_write_tokens=cache_write_tokens,
+        native_cost_usd=sum(costs) if costs else None,
+    )
+
+
+def parse_omp_transcript(text: str) -> Usage:
+    """Aggregate OMP usage from the authoritative final transcript.
+
+    OMP's JSON stream replays every message's usage inside message_end, turn_end,
+    and the closing agent_end transcript, so only the final transcript is used.
+    Its output bucket includes reasoning, while cacheRead/cacheWrite are separate
+    per-request buckets; normalize these to mutually exclusive runner buckets.
+    """
+
+    messages = []
+    completed_messages = []
+    completed_turns = []
+    completed_tool_results = []
+    for event in parse_json_events(text):
+        if event.get("type") == "agent_end":
+            messages = event.get("messages") or []
+        elif event.get("type") == "message_end" and isinstance(event.get("message"), dict):
+            completed_messages.append(event["message"])
+        elif event.get("type") == "turn_end" and isinstance(event.get("message"), dict):
+            completed_turns.append(event["message"])
+            tool_results = event.get("toolResults")
+            if isinstance(tool_results, list):
+                completed_tool_results.extend(tool_results)
+    if not messages:
+        # Successful OMP runs can omit agent_end. message_end and turn_end replay
+        # the same usage, so aggregate exactly one event family. Every toolResult
+        # carried by turn_end also gets its own message_end emission (agent-loop
+        # emitToolResult), so merge only tool results whose toolCallId was not
+        # already collected; otherwise subagent usage would be counted twice.
+        base = list(completed_messages or completed_turns)
+        seen_calls = {
+            message.get("toolCallId") for message in base if isinstance(message, dict)
+        }
+        for result in completed_tool_results:
+            call_id = result.get("toolCallId") if isinstance(result, dict) else None
+            if call_id is not None and call_id in seen_calls:
+                continue
+            base.append(result)
+        messages = base
+    if not messages:
+        return parse_usage(text)
+    input_tokens = output_tokens = reasoning_tokens = 0
+    cache_read_tokens = cache_write_tokens = 0
+    reasoning_seen = False
+    costs = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        usages = []
+        if message.get("role") == "assistant" and isinstance(message.get("usage"), dict):
+            usages.append(message["usage"])
+        if message.get("role") == "toolResult" and message.get("toolName") == "task":
+            details = message.get("details")
+            if isinstance(details, dict) and isinstance(details.get("usage"), dict):
+                usages.append(details["usage"])
+        for usage in usages:
+            parsed = _usage_from_mapping(usage)
+            input_tokens += parsed[0]
+            output_tokens += max(parsed[1] - parsed[2], 0)
+            reasoning_tokens += parsed[2]
+            cache_read_tokens += parsed[3]
+            cache_write_tokens += parsed[4]
+            reasoning_seen = reasoning_seen or any(
+                name in usage
+                for name in ("reasoning", "reasoning_tokens", "reasoningTokens")
+            )
+            cost = usage.get("cost")
+            total = _number(cost.get("total")) if isinstance(cost, dict) else _number(cost)
+            if total > 0:
+                costs.append(total)
     return Usage(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
@@ -194,6 +284,58 @@ def extract_identities(text: str) -> List[Tuple[Optional[str], str]]:
                 (provider_match.group(1) if provider_match else None, model_match.group(1))
             )
     return identities
+
+
+def extract_omp_identities(text: str) -> List[Tuple[Optional[str], str]]:
+    """Collect only direct OMP assistant identities, excluding tool-result metadata."""
+
+    identities: List[Tuple[Optional[str], str]] = []
+    for event in parse_json_events(text):
+        messages = []
+        if event.get("type") in {"message_start", "message_end", "turn_end"}:
+            messages.append(event.get("message"))
+        elif event.get("type") == "agent_end" and isinstance(event.get("messages"), list):
+            messages.extend(event["messages"])
+        for message in messages:
+            if not isinstance(message, dict) or message.get("role") != "assistant":
+                continue
+            provider = message.get("provider")
+            model = message.get("model")
+            if isinstance(model, str):
+                identities.append((provider if isinstance(provider, str) else None, model))
+    return identities
+
+
+def extract_omp_terminal_message(text: str) -> Optional[Dict[str, Any]]:
+    """Return the final assistant message of an OMP transcript.
+
+    Deadline-aborted turns exit 0 by design (oh-my-pi#7635) and carry
+    stopReason "aborted" only on this message, so callers use it to reject
+    runs that were cut off before completion. agent_end replays the whole
+    conversation, so its last assistant message wins over streamed events.
+    """
+
+    terminal = None
+    for event in parse_json_events(text):
+        if not isinstance(event, dict):
+            continue
+        if event.get("type") == "agent_end":
+            if isinstance(event.get("messages"), list):
+                assistants = [
+                    message
+                    for message in event["messages"]
+                    if isinstance(message, dict) and message.get("role") == "assistant"
+                ]
+                if assistants:
+                    terminal = assistants[-1]
+            continue
+        if event.get("type") in {"message_start", "message_end", "turn_end"} and isinstance(
+            event.get("message"), dict
+        ):
+            message = event["message"]
+            if message.get("role") == "assistant":
+                terminal = message
+    return terminal
 
 
 def extract_identity(text: str) -> Tuple[Optional[str], Optional[str]]:

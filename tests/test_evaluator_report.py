@@ -66,6 +66,7 @@ def test_summary_reports_deterministic_group_completion(tmp_path) -> None:
             output_tokens=20,
             reasoning_tokens=5,
             cache_read_tokens=10,
+            cache_write_tokens=3,
             estimated_cost_usd=0.1,
         ),
         RunResult(
@@ -81,6 +82,7 @@ def test_summary_reports_deterministic_group_completion(tmp_path) -> None:
             output_tokens=30,
             reasoning_tokens=7,
             cache_read_tokens=20,
+            cache_write_tokens=4,
             estimated_cost_usd=0.2,
         ),
     ]
@@ -94,22 +96,22 @@ def test_summary_reports_deterministic_group_completion(tmp_path) -> None:
     assert summary.count("## Experiment `experiment-") == 2
     assert summary.index("`experiment-one`") < summary.index("`experiment-two`")
     assert (
-        "| Total tokens | Input tokens | Cached input tokens | Output tokens | "
-        "Reasoning tokens | Cache hit rate |"
+        "| Total tokens | Input tokens | Cached input tokens | Cache write tokens | "
+        "Output tokens | Reasoning tokens | Cache hit rate |"
     ) in summary
     assert "Avg tokens" not in summary
     assert (
         "| model | one | 0/1 | 1/1 (100.0%) | 1/2 (50.0%) | 2/3 (66.7%) | "
-        "135 | 100 | 10 | 20 | 5 | 9.1% | $0.1000 estimated | 2.0s | 1.0s | "
+        "138 | 100 | 10 | 3 | 20 | 5 | 9.1% | $0.1000 estimated | 2.0s | 1.0s | "
         "incorrect: 1 |"
     ) in summary
     assert (
         "| model | two | 1/1 | 1/1 (100.0%) | 1/1 (100.0%) | 2/2 (100.0%) | "
-        "257 | 200 | 20 | 30 | 7 | 9.1% | $0.2000 estimated | — | 1.0s | — |"
+        "261 | 200 | 20 | 4 | 30 | 7 | 9.1% | $0.2000 estimated | — | 1.0s | — |"
     ) in summary
     aggregate = (
         "| model | 1/2 | 50.0% | 2/2 (100.0%) | 2/3 (66.7%) | "
-        "4/5 (80.0%) | 1/2 | 392 | 300 | 30 | 50 | 12 | 9.1% |"
+        "4/5 (80.0%) | 1/2 | 399 | 300 | 30 | 7 | 50 | 12 | 9.1% |"
     )
     assert summary.count(aggregate) == 2
     assert summary.count("### Configuration summary") == 2
@@ -140,4 +142,4 @@ def test_summary_omits_cache_hit_rate_without_cached_input(tmp_path) -> None:
 
     summary = path.read_text()
 
-    assert "| 120 | 100 | 0 | 20 | — | — |" in summary
+    assert "| 120 | 100 | 0 | 0 | 20 | — | — |" in summary

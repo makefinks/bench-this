@@ -4,9 +4,17 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from .errors import ConfigurationError, IdentityMismatch
+from .errors import ConfigurationError, IdentityMismatch, InfrastructureError
 from .models import HarnessConfig, Usage
-from .telemetry import extract_identities, extract_identity, parse_usage
+from .telemetry import (
+    extract_identities,
+    extract_identity,
+    extract_omp_identities,
+    extract_omp_terminal_message,
+    parse_json_events,
+    parse_omp_transcript,
+    parse_usage,
+)
 
 
 PREFLIGHT_PROMPT = "Reply with exactly BENCH_PREFLIGHT_OK. Do not read or write files."
@@ -50,6 +58,14 @@ class HarnessAdapter(ABC):
                 f"expected model {self.config.model!r}, harness reported {model!r}"
             )
         return provider, model
+
+    def verify_preflight(self, stdout: str, stderr: str = "") -> None:
+        """Verify that a source-free canary resolved the pinned identity."""
+
+        self.verify_identity(stdout, stderr)
+
+    def verify_solver(self, stdout: str, stderr: str = "") -> None:
+        """Reject successful process exits that contain harness-level failures."""
 
 
 class CopilotAdapter(HarnessAdapter):
@@ -148,11 +164,115 @@ class OpenCodeAdapter(HarnessAdapter):
         return identities[-1]
 
 
+class OmpAdapter(HarnessAdapter):
+    """Oh My Pi single-shot JSON adapter."""
+
+    def command(self, prompt: str, workspace: str = "/workspace") -> List[str]:
+        """Run one autonomous turn without persisting session state."""
+
+        return [
+            "omp", "--print", "--mode", "json", "--no-session", "--auto-approve",
+            "--no-title", "--cwd", workspace, "--model", self.config.qualified_model,
+            *self.config.arguments, prompt,
+        ]
+
+    def environment(self) -> Dict[str, str]:
+        """Keep OMP settings, credentials, and caches inside the staged home."""
+
+        environment = {
+            "HOME": "/home/bench",
+            "PI_CONFIG_DIR": ".omp",
+            "PI_CODING_AGENT_DIR": "/home/bench/.omp/agent",
+            "NO_COLOR": "1",
+        }
+        if self.config.region:
+            environment["AWS_REGION"] = self.config.region
+        return environment
+
+    def parse_usage(self, stdout: str, stderr: str = "", telemetry: str = "") -> Usage:
+        """Aggregate OMP's final transcript instead of triple-counting replays."""
+
+        return parse_omp_transcript(telemetry or f"{stdout}\n{stderr}")
+
+    def verify_identity(self, stdout: str, stderr: str = "") -> Tuple[Optional[str], str]:
+        """Verify every provider/model identity reported by OMP."""
+
+        identities = extract_omp_identities(f"{stdout}\n{stderr}")
+        if not identities:
+            raise IdentityMismatch("OMP did not report a resolved provider/model identity")
+        unexpected = [
+            f"{provider}/{model}"
+            for provider, model in identities
+            if provider != self.config.provider or model != self.config.model
+        ]
+        if unexpected:
+            raise IdentityMismatch(
+                f"expected only {self.config.qualified_model!r}, harness also resolved: "
+                + ", ".join(unexpected)
+            )
+        return identities[-1]
+
+    @staticmethod
+    def _verify_transcript(stdout: str, stderr: str = "") -> List[dict]:
+        """Reject provider errors that OMP reports in JSON while exiting successfully."""
+
+        events = parse_json_events(f"{stdout}\n{stderr}")
+        pending = list(events)
+        while pending:
+            value = pending.pop()
+            if isinstance(value, dict):
+                if value.get("stopReason") == "error":
+                    detail = value.get("errorMessage") or "OMP reported a provider error"
+                    raise InfrastructureError(str(detail))
+                pending.extend(value.values())
+            elif isinstance(value, list):
+                pending.extend(value)
+        return events
+
+    def verify_preflight(self, stdout: str, stderr: str = "") -> None:
+        """Require a successful provider response as well as the pinned model identity."""
+
+        events = self._verify_transcript(stdout, stderr)
+        self.verify_identity(stdout, stderr)
+        responses = []
+        for event in events:
+            message = event.get("message") if isinstance(event, dict) else None
+            if event.get("type") != "message_end" or not isinstance(message, dict):
+                continue
+            if message.get("role") != "assistant" or not isinstance(message.get("content"), list):
+                continue
+            responses.append(
+                "".join(
+                    part.get("text", "")
+                    for part in message["content"]
+                    if isinstance(part, dict) and part.get("type") == "text"
+                ).strip()
+            )
+        if not responses or responses[-1] != "BENCH_PREFLIGHT_OK":
+            raise InfrastructureError("OMP preflight did not return exactly BENCH_PREFLIGHT_OK")
+
+    def verify_solver(self, stdout: str, stderr: str = "") -> None:
+        """Fail the run when OMP embeds a provider error in an exit-zero transcript."""
+
+        self._verify_transcript(stdout, stderr)
+        # Deadline-aborted turns exit 0 by design (oh-my-pi#7635); only the
+        # terminal assistant message carries stopReason "aborted". Classify
+        # these as infrastructure failures so they stay distinguishable from
+        # genuine "incorrect" task failures in summaries.
+        terminal = extract_omp_terminal_message(f"{stdout}\n{stderr}")
+        if isinstance(terminal, dict) and terminal.get("stopReason") == "aborted":
+            detail = terminal.get("errorMessage") or "no provider detail"
+            raise InfrastructureError(f"OMP turn aborted before completion: {detail}")
+        self.verify_identity(stdout, stderr)
+
+
 def adapter_for(config: HarnessConfig) -> HarnessAdapter:
-    """Select one of the two deliberately direct v1 harness branches."""
+    """Select one of the supported direct harness branches."""
 
     if config.harness == "copilot":
         return CopilotAdapter(config)
     if config.harness == "opencode":
         return OpenCodeAdapter(config)
+    if config.harness == "omp":
+        return OmpAdapter(config)
     raise ConfigurationError(f"unsupported harness: {config.harness}")

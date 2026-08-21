@@ -46,8 +46,14 @@ The repository root must be on `PYTHONPATH` because the fixture-generator tests 
 ## Optional skill E2E verification
 
 This section describes a developer-only verification loop. It is not part of
-`bench-this`'s behavior, benchmark policy, treatment configuration, or
-supported solver setup.
+`bench-this`'s behavior, benchmark policy, treatment configuration, or supported solver setup.
+
+E2E testing is always orchestrated, not a manual benchmark setup. When a user asks to test the skill
+in another repository, you MUST send the parent instance/orchestrator three separate
+prompts: recommend benchmark candidates, accept the approved candidates, and create a benchmark
+configuration. The parent owns candidate discovery, task and artifact generation, validation, and
+configuration. You MUST NOT perform those stages yourself. You MAY prepare the explicitly
+user-provided repository only to install the skill and launch or resume the parent.
 
 By default, use this exact provider/model combination for the parent agent that exercises the
 skill:
@@ -65,11 +71,10 @@ GitHub Copilot CLI are also supported when the user explicitly requests them. Us
 the user requests for an alternative mode; do not silently choose a model.
 
 Parent-agent selection and benchmark-treatment selection are separate decisions. Do not infer or
-create a treatment from the parent agent's harness, provider, model, or authentication. This
-developer workflow normally stops after task creation and behavioral validation without configuring
-or running a treatment. If the user separately requests a treatment, use its independently approved
-harness, provider where applicable, model, and auth profile. Matching the parent is allowed but is
-not required.
+create a treatment from the parent agent's harness, provider, model, or authentication. The final
+configuration prompt creates configuration only; it does not authorize treatment execution. If the
+user separately requests a treatment run, use its independently approved harness, provider where
+applicable, model, and auth profile. Matching the parent is allowed but is not required.
 
 For the default, verify that `opencode auth list` reports an OpenAI OAuth credential and run the
 parent OpenCode session with `OPENAI_API_KEY` unset so it cannot silently use API-key authentication
@@ -110,9 +115,10 @@ benchmark prompts, evaluator, Dockerfile, or treatment configuration.
 Invoke the parent orchestrator with only the skill name and the user's high-level goal. Name
 `bench-this` so the orchestrator reliably loads it, but do not prescribe task discovery or
 validation
-steps, restate benchmark policy, or tell it which tools or subagents to use. The installed skill is
-responsible for supplying that workflow. Keep follow-up messages equally minimal and communicate
-only the user's decision, such as approval or rejection.
+steps, restate benchmark policy, or tell it which tools or subagents to use. After each stage, send
+only the next short decision prompt in the same session. The installed skill that is available to
+the orchestrator
+is responsible for the workflow; do not perform any stage manually or prompt in too much detail.
 
 ### User-provided repository
 
@@ -159,13 +165,14 @@ parent_model="openai/gpt-5.6-luna"
     --print-logs \
     --log-level INFO \
     --auto \
-    'Use the bench-this skill to create one benchmark task for this repository.' \
+    'Use the bench-this skill to recommend benchmark candidates.' \
     >"$log_dir/parent.jsonl" 2>"$log_dir/opencode.log"
 )
 ```
 
-Record the parent `sessionID` from the JSON stream and continue that same session after
-explicitly approving the candidate:
+Record the parent `sessionID` from the JSON stream. After the candidates are presented, continue
+that
+same session with a separate approval prompt:
 
 ```bash
 (
@@ -179,8 +186,28 @@ explicitly approving the candidate:
     --print-logs \
     --log-level INFO \
     --auto \
-    'Approved. Continue.' \
+    'I Accept the recommended candidates.' \
     >"$log_dir/creation.jsonl" 2>>"$log_dir/opencode.log"
+)
+```
+
+After the parent reports task creation and validation, continue the same session with the final
+configuration prompt:
+
+```bash
+(
+  cd "$repository_dir"
+  env -u OPENAI_API_KEY opencode run \
+    --session <parent-session-id> \
+    --model "$parent_model" \
+    --variant max \
+    --agent build \
+    --format json \
+    --print-logs \
+    --log-level INFO \
+    --auto \
+    'Create a benchmark configuration.' \
+    >"$log_dir/configuration.jsonl" 2>>"$log_dir/opencode.log"
 )
 ```
 
@@ -217,13 +244,13 @@ parent_model="<requested-model>"
     --no-remote \
     --no-auto-update \
     --prompt \
-    'Use the bench-this skill to create one benchmark task for this repository.' \
+    'Use the bench-this skill to recommend benchmark candidates.' \
     >"$log_dir/parent.jsonl" 2>"$log_dir/copilot.log"
 )
 ```
 
-Record the session ID reported in the JSON stream and resume that session after explicitly approving
-the candidate:
+Record the session ID reported in the JSON stream. After the candidates are presented, resume that
+same session with a separate approval prompt:
 
 ```bash
 (
@@ -238,8 +265,29 @@ the candidate:
     --no-remote \
     --no-auto-update \
     --prompt \
-    'Approved. Continue.' \
+    'I accept the recommended candidates.' \
     >"$log_dir/creation.jsonl" 2>>"$log_dir/copilot.log"
+)
+```
+
+After the parent reports task creation and validation, resume the same session with the final
+configuration prompt:
+
+```bash
+(
+  cd "$repository_dir"
+  copilot \
+    --resume=<parent-session-id> \
+    --model "$parent_model" \
+    --output-format json \
+    --allow-all-tools \
+    --allow-all-paths \
+    --deny-tool=github \
+    --no-remote \
+    --no-auto-update \
+    --prompt \
+    'Create a benchmark configuration.' \
+    >"$log_dir/configuration.jsonl" 2>>"$log_dir/copilot.log"
 )
 ```
 
@@ -302,10 +350,12 @@ the normal E2E target.
 under `skills/bench-this/assets/benchmarks/_vendor/agent_bench/` is the
 vendored distribution copy used by generated target repositories.
 
-When changing runner behavior, modify and test `src/agent_bench/` first, then synchronize
-the vendored copy after the source change is complete. Do not independently edit both
-copies. Skill-only changes, such as `SKILL.md`, references, or scaffold assets, do not
-require changes to `src/agent_bench/`.
+When changing runner behavior, modify and test `src/agent_bench/` first. Do not
+independently edit both copies, and do not run `scripts/sync_vendored_runner.py` yourself.
+When handed work back, tell the user the runner source and the vendored copy have
+diverged and that the sync script must be run manually; the pre-commit hook verifies
+they are back in sync. Skill-only changes, such as `SKILL.md`, references, or scaffold
+assets, do not require changes to `src/agent_bench/`.
 
 Generated repositories execute their own `benchmarks/_vendor/agent_bench/` copy and do
 not use this repository's `src/` directory.

@@ -1,7 +1,7 @@
 import pytest
 
-from agent_bench.errors import IdentityMismatch
-from agent_bench.harnesses import CopilotAdapter, OpenCodeAdapter
+from agent_bench.errors import IdentityMismatch, InfrastructureError
+from agent_bench.harnesses import CopilotAdapter, OmpAdapter, OpenCodeAdapter
 from agent_bench.models import HarnessConfig
 
 
@@ -62,3 +62,113 @@ def test_opencode_openai_identity_is_accepted_when_pinned(tmp_path):
     OpenCodeAdapter(value).verify_identity(
         '{"providerID":"openai","modelID":"gpt-fixed"}'
     )
+
+
+def test_omp_command_is_single_shot_and_provider_qualified(tmp_path):
+    value = config(tmp_path, "omp")
+    value = HarnessConfig(**{**value.__dict__, "provider": "openai-codex"})
+    command = OmpAdapter(value).command("fix it")
+    assert command[:4] == ["omp", "--print", "--mode", "json"]
+    assert "--no-session" in command
+    assert command[command.index("--model") + 1] == "openai-codex/gpt-fixed"
+
+
+def test_omp_identity_requires_provider_and_model(tmp_path):
+    value = config(tmp_path, "omp")
+    value = HarnessConfig(**{**value.__dict__, "provider": "openai-codex"})
+    adapter = OmpAdapter(value)
+    adapter.verify_identity(
+        '{"type":"message_end","message":{"role":"assistant","provider":"openai-codex","model":"gpt-fixed"}}'
+    )
+
+    with pytest.raises(IdentityMismatch):
+        adapter.verify_identity(
+            '{"type":"message_end","message":{"role":"assistant","provider":"github-copilot","model":"gpt-fixed"}}'
+        )
+
+
+def test_omp_environment_isolated_and_supports_bedrock_region(tmp_path):
+    value = config(tmp_path, "omp")
+    value = HarnessConfig(**{**value.__dict__, "provider": "amazon-bedrock", "region": "eu-west-1"})
+    environment = OmpAdapter(value).environment()
+    assert environment["PI_CONFIG_DIR"] == ".omp"
+    assert environment["PI_CODING_AGENT_DIR"] == "/home/bench/.omp/agent"
+    assert environment["AWS_REGION"] == "eu-west-1"
+
+
+def test_omp_preflight_requires_successful_exact_response(tmp_path):
+    value = config(tmp_path, "omp")
+    value = HarnessConfig(**{**value.__dict__, "provider": "amazon-bedrock"})
+    adapter = OmpAdapter(value)
+    successful = """{"type":"message_end","message":{"role":"assistant","provider":"amazon-bedrock","model":"gpt-fixed","content":[{"type":"text","text":"\\nBENCH_PREFLIGHT_OK"}],"stopReason":"stop"}}
+"""
+    adapter.verify_preflight(successful)
+
+    with pytest.raises(InfrastructureError, match="did not return exactly"):
+        adapter.verify_preflight(successful.replace("BENCH_PREFLIGHT_OK", "not ready"))
+
+
+def test_omp_rejects_embedded_provider_error_but_not_tool_error(tmp_path):
+    value = config(tmp_path, "omp")
+    value = HarnessConfig(**{**value.__dict__, "provider": "amazon-bedrock"})
+    adapter = OmpAdapter(value)
+    adapter.verify_solver(
+        '{"type":"tool_execution_end","isError":true,"result":{"details":{"response":{"model":"image-inspection-model"}}}}\n'
+        '{"type":"message_end","message":{"role":"assistant","provider":"amazon-bedrock","model":"gpt-fixed","content":[],"stopReason":"stop"}}\n'
+    )
+
+    transcript = """{"type":"message_end","message":{"role":"assistant","provider":"amazon-bedrock","model":"gpt-fixed","content":[],"stopReason":"error","errorMessage":"Bedrock HTTP 404"}}
+"""
+    with pytest.raises(InfrastructureError, match="Bedrock HTTP 404"):
+        adapter.verify_solver(transcript)
+
+    terminal_only = """{"type":"agent_end","messages":[{"role":"assistant","stopReason":"error","errorMessage":"nested provider failure"}]}
+"""
+    with pytest.raises(InfrastructureError, match="nested provider failure"):
+        adapter.verify_solver(terminal_only)
+
+
+def test_omp_rejects_terminal_deadline_abort_despite_zero_exit(tmp_path):
+    # oh-my-pi#7635: JSON-mode deadline aborts exit 0 and only the terminal
+    # assistant message carries stopReason "aborted".
+    value = config(tmp_path, "omp")
+    value = HarnessConfig(**{**value.__dict__, "provider": "amazon-bedrock"})
+    adapter = OmpAdapter(value)
+    transcript = (
+        '{"type":"message_end","message":{"role":"assistant","provider":"amazon-bedrock",'
+        '"model":"gpt-fixed","content":[],"stopReason":"stop"}}\n'
+        '{"type":"agent_end","messages":[{"role":"assistant","provider":"amazon-bedrock",'
+        '"model":"gpt-fixed","content":[],"stopReason":"aborted","errorMessage":"Deadline exceeded"}]}\n'
+    )
+    with pytest.raises(InfrastructureError, match="Deadline exceeded"):
+        adapter.verify_solver(transcript)
+
+
+def test_omp_ignores_midstream_abort_after_recovery(tmp_path):
+    value = config(tmp_path, "omp")
+    value = HarnessConfig(**{**value.__dict__, "provider": "amazon-bedrock"})
+    adapter = OmpAdapter(value)
+    recovered = (
+        '{"type":"message_end","message":{"role":"assistant","provider":"amazon-bedrock",'
+        '"model":"gpt-fixed","content":[],"stopReason":"aborted"}}\n'
+        '{"type":"message_end","message":{"role":"assistant","provider":"amazon-bedrock",'
+        '"model":"gpt-fixed","content":[],"stopReason":"stop"}}\n'
+    )
+    adapter.verify_solver(recovered)
+
+
+def test_omp_catches_truncated_stream_terminal_abort(tmp_path):
+    # Truncated streams (oh-my-pi#7635 class) end at turn_end with no agent_end;
+    # the turn-boundary message is then the terminal state.
+    value = config(tmp_path, "omp")
+    value = HarnessConfig(**{**value.__dict__, "provider": "amazon-bedrock"})
+    adapter = OmpAdapter(value)
+    truncated = (
+        '{"type":"message_end","message":{"role":"assistant","provider":"amazon-bedrock",'
+        '"model":"gpt-fixed","content":[],"stopReason":"stop"}}\n'
+        '{"type":"turn_end","message":{"role":"assistant","provider":"amazon-bedrock",'
+        '"model":"gpt-fixed","content":[],"stopReason":"aborted","errorMessage":"Deadline exceeded"},'
+        '"toolResults":[]}\n'
+    )
+    with pytest.raises(InfrastructureError, match="Deadline exceeded"):
+        adapter.verify_solver(truncated)

@@ -17,6 +17,13 @@ from .models import HarnessConfig, ProjectConfig, TaskConfig
 PUBLIC_TESTS_WORKSPACE_DIRECTORY = ".agent-bench-public-tests"
 BEDROCK_CREDENTIALS_FILE = Path("credentials.json")
 BEDROCK_TOKEN_ENVIRONMENT_VARIABLE = "AWS_BEARER_TOKEN_BEDROCK"
+OMP_CREDENTIALS_FILE = Path("credentials.json")
+OMP_NATIVE_DATABASE = Path(".omp/agent/agent.db")
+OMP_PROVIDER_ENVIRONMENT = {
+    "github-copilot": "COPILOT_GITHUB_TOKEN",
+    "openai-codex": "OPENAI_CODEX_OAUTH_TOKEN",
+    "amazon-bedrock": "AWS_BEARER_TOKEN_BEDROCK",
+}
 
 
 def _reject_symlinks(root: Path, label: str) -> None:
@@ -207,6 +214,42 @@ def store_bedrock_api_key(
     return profile
 
 
+def store_omp_credential(
+    profile_name: str,
+    provider: str,
+    token: str,
+    auth_root: Optional[Path] = None,
+) -> Path:
+    """Store one OMP provider token in an isolated runner-owned profile."""
+
+    environment_name = OMP_PROVIDER_ENVIRONMENT.get(provider)
+    if environment_name is None:
+        raise ConfigurationError(f"unsupported OMP provider: {provider}")
+    if not token or token.isspace() or "\n" in token or "\r" in token:
+        raise ConfigurationError(f"{provider} credential must be one non-empty line")
+    profile = auth_profile_root(profile_name, "omp", auth_root)
+    if profile.exists():
+        _reject_symlinks(profile, "auth_profile")
+        files = sorted(path.relative_to(profile) for path in profile.rglob("*") if path.is_file())
+        if files not in ([], [OMP_CREDENTIALS_FILE]):
+            raise ConfigurationError(f"refusing to replace broadened authentication profile: {profile}")
+    profile.mkdir(parents=True, exist_ok=True)
+    profile.chmod(0o700)
+    destination = profile / OMP_CREDENTIALS_FILE
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=profile, prefix=".credentials-", delete=False) as handle:
+            temporary = Path(handle.name)
+            json.dump({environment_name: token}, handle, separators=(",", ":"))
+            handle.write("\n")
+        temporary.chmod(0o600)
+        temporary.replace(destination)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    return profile
+
+
 def validate_auth_profile(config: HarnessConfig, auth_root: Optional[Path] = None) -> Path:
     """Reject missing, linked, or broadened credential profiles before a run."""
 
@@ -268,6 +311,32 @@ def validate_auth_profile(config: HarnessConfig, auth_root: Optional[Path] = Non
             raise ConfigurationError(
                 f"OpenCode auth profile must contain only provider {config.provider!r}"
             )
+    elif config.harness == "omp":
+        files = sorted(path.relative_to(profile) for path in profile.rglob("*") if path.is_file())
+        if config.provider == AMAZON_BEDROCK_PROVIDER:
+            if files != [OMP_CREDENTIALS_FILE]:
+                raise ConfigurationError(f"OMP auth profile contains unexpected files: {profile}")
+            try:
+                credentials = json.loads(
+                    (profile / OMP_CREDENTIALS_FILE).read_text(encoding="utf-8")
+                )
+            except (OSError, json.JSONDecodeError) as exc:
+                raise ConfigurationError(f"invalid OMP credential file: {profile}") from exc
+            environment_name = OMP_PROVIDER_ENVIRONMENT[config.provider]
+            token = credentials.get(environment_name) if isinstance(credentials, dict) else None
+            if (
+                not isinstance(credentials, dict)
+                or set(credentials) != {environment_name}
+                or not isinstance(token, str)
+                or not token.strip()
+                or "\n" in token
+                or "\r" in token
+            ):
+                raise ConfigurationError(f"OMP auth profile does not match provider {config.provider!r}")
+        elif OMP_NATIVE_DATABASE not in files:
+            raise ConfigurationError(
+                f"OMP OAuth profile is missing {OMP_NATIVE_DATABASE}: {profile}"
+            )
     return profile
 
 
@@ -277,6 +346,13 @@ def auth_environment(
 ) -> Dict[str, str]:
     """Return provider secrets that must be injected instead of staged as files."""
 
+    if config.harness == "omp":
+        if config.provider != AMAZON_BEDROCK_PROVIDER:
+            validate_auth_profile(config, auth_root)
+            return {}
+        profile = validate_auth_profile(config, auth_root)
+        credentials = json.loads((profile / OMP_CREDENTIALS_FILE).read_text(encoding="utf-8"))
+        return credentials
     if config.harness != "opencode" or config.provider != AMAZON_BEDROCK_PROVIDER:
         return {}
     profile = validate_auth_profile(config, auth_root)
@@ -302,14 +378,11 @@ def stage_home(
     profile = auth_profile_root(config.auth_profile, config.harness, auth_root)
     if require_auth:
         validate_auth_profile(config, auth_root)
-    # Bedrock consumes a bearer-token environment variable. Keeping its runner
-    # credential file out of HOME prevents OpenCode from treating it as config.
+    # Bearer-token profiles are injected as environment variables, not mounted into HOME.
     if (
         profile.exists()
-        and not (
-            config.harness == "opencode"
-            and config.provider == AMAZON_BEDROCK_PROVIDER
-        )
+        and not (config.harness == "opencode" and config.provider == AMAZON_BEDROCK_PROVIDER)
+        and not (config.harness == "omp" and config.provider == AMAZON_BEDROCK_PROVIDER)
     ):
         copy_contents(profile, destination, "auth_profile")
 
@@ -317,6 +390,8 @@ def stage_home(
     # silently replace the experiment's selected settings.
     if config.harness == "copilot":
         config_target = destination / ".copilot"
+    elif config.harness == "omp":
+        config_target = destination / ".omp" / "agent"
     else:
         config_target = destination / ".config" / "opencode"
     copy_contents(config.harness_config, config_target, "harness_config")
