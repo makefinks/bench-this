@@ -25,7 +25,7 @@ npx skills add makefinks/bench-this
 
 ## Supported setups
 
-The following harness and provider combinations are currently supported.
+`bench-this` supports these harness and provider combinations:
 
 | Harness            | Provider or account               |
 | ------------------ | --------------------------------- |
@@ -98,7 +98,7 @@ Stop for approval after presenting them.
 If you do not specify a count, the skill recommends five candidates; requests for more than ten
 require confirmation.
 
-The skill deeply explores older, middle, and recent repository history. It checks the worktree and
+The skill explores older, middle, and recent repository history. It checks the worktree and
 keeps discovery read-only, resolves candidate and base hashes, verifies their diff, and reads
 promising tests and surrounding code rather than choosing from commit titles alone. It checks
 history depth and reports shallow or otherwise limited coverage instead of implying a full-history
@@ -106,7 +106,7 @@ review. It also sketches a behavioral evaluator and probes each proposed require
 commits before recommending a candidate.
 
 Treatment configuration is a separate choice. The skill makes it easy to generate valid
-configurations just by talking to the agent and handing it references to skills or mcp servers
+configurations just by talking to the agent and handing it references to skills or MCP servers
 that you want to compare.
 
 ### 2. The agent creates a self-contained benchmark
@@ -165,9 +165,9 @@ These commands answer three different questions:
    base-fail/reference-pass pair.
 
 An import failure, missing dependency, evaluator crash, timeout, or half-written receipt is not a
-valid base failure. The base must reach a genuine behavioral assertion. Full phase logs and an
-atomic receipt are kept for each attempt, which makes an interrupted or flaky validation visible
-instead of accidentally treating it as success.
+valid base failure. The base must reach a genuine behavioral assertion. Every attempt keeps full
+phase logs and an atomic receipt, so an interrupted or flaky validation shows up instead of
+quietly counting as success.
 
 When diagnosis is necessary, the agent can retry one task with live logs:
 
@@ -180,9 +180,9 @@ When diagnosis is necessary, the agent can retry one task with live logs:
 A treatment is the complete agent configuration being compared: harness, provider when applicable,
 pinned model, harness settings, workspace overlay, and authentication profile.
 
-You provide the comparison you care about—or approve a concrete recommendation after task
-validation—and the agent uses the bundled generator to avoid hand-written configuration mistakes.
-The equivalent command for an OpenCode treatment is:
+You provide the comparison you care about, or you approve a concrete recommendation after task
+validation. Either way, the agent uses the bundled generator to avoid hand-written configuration
+mistakes. The equivalent command for an OpenCode treatment is:
 
 ```bash
 python <skill-directory>/scripts/configure.py <target-repository> \
@@ -251,10 +251,9 @@ silently imports the user's normal Copilot, OpenCode, GitHub CLI, browser, or ho
 credentials. If the profile is missing, the agent offers to start the appropriate setup or gives you
 the same command to run yourself. You personally complete browser or device authorization. For
 agent-assisted Bedrock setup, the agent asks for the token first and uses the bundled
-non-interactive
-provisioning helper. The `auth login` command above
-is the manual alternative. In either path, the runner injects the stored token as
-`AWS_BEARER_TOKEN_BEDROCK` and never writes it into treatment files.
+non-interactive provisioning helper. The `auth login` command above is the manual alternative. In
+either path, the runner injects the stored token as `AWS_BEARER_TOKEN_BEDROCK` and never writes it
+into treatment files.
 
 After login, you or the agent verify the matching profile and harness before running a treatment:
 
@@ -315,8 +314,8 @@ real public boundaries. They do not inspect product source, demand the historica
 new private helpers directly, or hide required output structure that a solver could not infer from
 the prompt.
 
-Each task divides its contract into **requirement groups**: meaningful outcomes such as “reject a
-duplicate” or “preserve the existing record.” The evaluator reports one boolean per group. A task
+Each task divides its contract into **requirement groups**: meaningful outcomes such as "reject a
+duplicate" or "preserve the existing record." The evaluator reports one boolean per group. A task
 still passes only when every group passes, while the grouped result makes partial progress
 interpretable without awarding extra credit for a pile of similar assertions.
 
@@ -349,7 +348,7 @@ The hidden evaluator observes returned values, exceptions, emitted events, gener
 persisted state. This leaves room for a novel correct solution while rejecting patches that only add
 the expected symbol or mimic an internal implementation detail.
 
-### Task acceptance is guarded
+### Isolated authoring, checked twice
 
 Task agents author in isolated scratch workspaces. A repeatable, read-only workspace check catches
 incomplete manifests, evaluator protocol mistakes, forbidden techniques, and integrity drift before
@@ -360,13 +359,13 @@ into the benchmark.
 
 ## Docker without the mystery
 
-The Docker image is the benchmark's portable laboratory. It has two jobs:
+The Docker image has two jobs:
 
 1. provide the historical project's runtimes, native libraries, package managers, and test tools;
 2. provide the pinned coding-agent harness used by measured treatments.
 
 The scaffold starts with a Debian-based image containing common tooling and pinned harness CLIs.
-Benchmark authors extend it for the target project instead of replacing one half of the laboratory.
+Benchmark authors extend it for the target project rather than replacing it.
 There is one shared image and one `setup.sh` for a v1 benchmark, so every task is measured in the
 same environment.
 
@@ -383,18 +382,18 @@ For the full setup checklist, see
 
 ## What can see what?
 
-Isolation is part of the experiment, not just a security bonus.
+Isolation protects the measurement first and your machine second.
 
-| Resource               | Solver        | Evaluator          | Reason                                              |
-| ---------------------- | ------------- | ------------------ | --------------------------------------------------- |
-| Project workspace      | Read/write    | Separate copy      | The evaluator setup cannot be changed by the solver |
-| `.git` history         | No            | No                 | Prevents recovery of the historical solution        |
-| Benchmark manifests    | No            | No                 | Keeps task metadata out of the workspace            |
-| Public task files      | Yes           | Through workspace  | Supplies intentional fixtures or instructions       |
-| Public tests           | Writable copy | Read-only original | Supports iteration without trusting edited tests    |
-| Hidden evaluator       | No            | Read-only          | Prevents test-aware patching                        |
-| Temporary auth profile | Yes           | No                 | Lets the harness call its provider                  |
-| Network                | Yes           | No                 | The solver needs its provider; evaluation does not  |
+| Resource               | Solver        | Evaluator          | Reason                                             |
+| ---------------------- | ------------- | ------------------ | -------------------------------------------------- |
+| Project workspace      | Read/write    | Separate copy      | The solver cannot change the evaluator's setup     |
+| `.git` history         | No            | No                 | Prevents recovery of the historical solution       |
+| Benchmark manifests    | No            | No                 | Keeps task metadata out of the workspace           |
+| Public task files      | Yes           | Through workspace  | Supplies intentional fixtures or instructions      |
+| Public tests           | Writable copy | Read-only original | Supports iteration without trusting edited tests   |
+| Hidden evaluator       | No            | Read-only          | Prevents test-aware patching                       |
+| Temporary auth profile | Yes           | No                 | Lets the harness call its provider                 |
+| Network                | Yes           | No                 | The solver needs its provider; evaluation does not |
 
 Before source is mounted, the runner also performs a source-free identity preflight in an empty
 workspace. Authentication must succeed and the harness must report the configured model (and, for
@@ -406,7 +405,7 @@ invocation with hidden tests mounted read-only, no credentials, and `--network n
 
 ## Reading the results
 
-Runs are stored under `benchmarks/results/`:
+Results live under `benchmarks/results/`:
 
 ```text
 results/
@@ -420,7 +419,7 @@ results/
 Each completed experiment section contains both a configuration-level comparison and a per-task
 breakdown with scores, token usage, cost, solver time, runtime, and failure reason.
 
-Failures are kept distinct so an agent is not blamed for a broken laboratory:
+The runner keeps failure kinds distinct so a broken environment never counts as a wrong answer:
 
 - **incorrect**: the solver finished normally, but at least one requirement group failed;
 - **candidate**: the submitted workspace no longer imports or compiles;
@@ -443,20 +442,20 @@ performance.
 
 ## Where the detailed contracts live
 
-- [SKILL.md](skills/bench-this/SKILL.md) — the complete authoring workflow and policy
-- [task-quality.md](skills/bench-this/references/task-quality.md) — candidate,
+- [SKILL.md](skills/bench-this/SKILL.md) covers the complete authoring workflow and policy
+- [task-quality.md](skills/bench-this/references/task-quality.md) defines candidate,
   prompt, and evaluator quality gates
-- [setup.md](skills/bench-this/references/setup.md) — Docker and project setup
-- [formats.md](skills/bench-this/references/formats.md) — YAML formats, evaluator
-  protocol, and command reference
-- [configuration.md](skills/bench-this/references/configuration.md) — treatments,
+- [setup.md](skills/bench-this/references/setup.md) explains Docker and project setup
+- [formats.md](skills/bench-this/references/formats.md) specifies YAML formats, the
+  evaluator protocol, and commands
+- [configuration.md](skills/bench-this/references/configuration.md) documents treatments,
   authentication, and overlays
-- [reasoning-effort.md](skills/bench-this/references/configuration/treatments/reasoning-effort.md) —
-  reasoning-effort treatment policy and harness-specific controls
-- [task-agent.md](skills/bench-this/references/task-agent.md) — worker isolation and
-  task-authoring handoff contract
-- [task-verifier.md](skills/bench-this/references/task-verifier.md) — narrow read-only
-  contract and evaluator verification pass
+- [reasoning-effort.md](skills/bench-this/references/configuration/treatments/reasoning-effort.md)
+  describes reasoning-effort treatment policy and harness-specific controls
+- [task-agent.md](skills/bench-this/references/task-agent.md) specifies worker isolation
+  and the task-authoring handoff contract
+- [task-verifier.md](skills/bench-this/references/task-verifier.md) defines the narrow
+  read-only contract and the evaluator verification pass
 
 ## Developing this repository
 
@@ -505,5 +504,5 @@ python3 scripts/create_synthetic_fixture.py --help
 ```
 
 Most tests use fake Docker implementations to cover ordering, mounts, isolation, reporting, and
-failure classification quickly. Docker integration tests cover the smaller set of behavior that
-needs a real daemon and image.
+failure classification. Docker integration tests cover the smaller set of behavior that needs a
+real daemon and image.
