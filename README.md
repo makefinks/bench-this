@@ -27,20 +27,16 @@ npx skills add makefinks/bench-this
 
 `bench-this` supports these harness and provider combinations:
 
-| Harness            | Provider or account               |
-| ------------------ | --------------------------------- |
-| Native Copilot CLI | GitHub Copilot                    |
-| OpenCode           | OpenAI (`openai`)                 |
-| OpenCode           | GitHub Copilot (`github-copilot`) |
-| OpenCode           | OpenCode Zen (`opencode`)         |
-| OpenCode           | OpenCode Go (`opencode-go`)       |
-| OpenCode           | Amazon Bedrock (`amazon-bedrock`) |
-| Oh My Pi           | GitHub Copilot (`github-copilot`) |
-| Oh My Pi           | OpenAI Codex (`openai-codex`)     |
-| Oh My Pi           | Amazon Bedrock (`amazon-bedrock`) |
+| Harness            | GitHub Copilot (`github-copilot`) | OpenAI (`openai`) | OpenAI Codex (`openai-codex`) | OpenCode Zen (`opencode`) | OpenCode Go (`opencode-go`) | Amazon Bedrock (`amazon-bedrock`) |
+| ------------------ | --------------------------------- | ----------------- | ----------------------------- | ------------------------- | --------------------------- | --------------------------------- |
+| Native Copilot CLI | ✓                                 |                   |                               |                           |                             |                                   |
+| OpenCode           | ✓                                 | ✓                 |                               | ✓                         | ✓                           | ✓                                 |
+| Oh My Pi           | ✓                                 |                   | ✓                             |                           |                             | ✓                                 |
+
+Native Copilot CLI has no separate provider setting; it always uses your GitHub Copilot account.
 
 See [configuration.md](skills/bench-this/references/configuration.md) for setup commands and
-reproducibility rules.
+reproducibility rules. Contributions that add another harness or provider are greatly appreciated.
 
 ## The idea in one minute
 
