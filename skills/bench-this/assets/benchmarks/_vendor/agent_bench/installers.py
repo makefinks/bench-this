@@ -23,7 +23,7 @@ HARNESS_INSTALLS = {
         ('npm install --global "@github/copilot@${COPILOT_CLI_VERSION}"',),
     ),
     "omp": HarnessInstall(
-        {"BUN_VERSION": "1.3.14", "OMP_VERSION": "17.2.4"},
+        {"BUN_VERSION": "1.3.14", "OMP_VERSION": "17.2.9"},
         (
             'npm install --global "bun@${BUN_VERSION}"',
             'BUN_INSTALL=/usr/local bun install --global "@oh-my-pi/pi-coding-agent@${OMP_VERSION}"',

@@ -193,8 +193,20 @@ def parse_omp_transcript(text: str) -> Usage:
                 completed_tool_results.extend(tool_results)
     if not messages:
         # Successful OMP runs can omit agent_end. message_end and turn_end replay
-        # the same usage, so aggregate exactly one event family.
-        messages = [*(completed_messages or completed_turns), *completed_tool_results]
+        # the same usage, so aggregate exactly one event family. Every toolResult
+        # carried by turn_end also gets its own message_end emission (agent-loop
+        # emitToolResult), so merge only tool results whose toolCallId was not
+        # already collected; otherwise subagent usage would be counted twice.
+        base = list(completed_messages or completed_turns)
+        seen_calls = {
+            message.get("toolCallId") for message in base if isinstance(message, dict)
+        }
+        for result in completed_tool_results:
+            call_id = result.get("toolCallId") if isinstance(result, dict) else None
+            if call_id is not None and call_id in seen_calls:
+                continue
+            base.append(result)
+        messages = base
     if not messages:
         return parse_usage(text)
     input_tokens = output_tokens = reasoning_tokens = 0
@@ -292,6 +304,38 @@ def extract_omp_identities(text: str) -> List[Tuple[Optional[str], str]]:
             if isinstance(model, str):
                 identities.append((provider if isinstance(provider, str) else None, model))
     return identities
+
+
+def extract_omp_terminal_message(text: str) -> Optional[Dict[str, Any]]:
+    """Return the final assistant message of an OMP transcript.
+
+    Deadline-aborted turns exit 0 by design (oh-my-pi#7635) and carry
+    stopReason "aborted" only on this message, so callers use it to reject
+    runs that were cut off before completion. agent_end replays the whole
+    conversation, so its last assistant message wins over streamed events.
+    """
+
+    terminal = None
+    for event in parse_json_events(text):
+        if not isinstance(event, dict):
+            continue
+        if event.get("type") == "agent_end":
+            if isinstance(event.get("messages"), list):
+                assistants = [
+                    message
+                    for message in event["messages"]
+                    if isinstance(message, dict) and message.get("role") == "assistant"
+                ]
+                if assistants:
+                    terminal = assistants[-1]
+            continue
+        if event.get("type") in {"message_start", "message_end", "turn_end"} and isinstance(
+            event.get("message"), dict
+        ):
+            message = event["message"]
+            if message.get("role") == "assistant":
+                terminal = message
+    return terminal
 
 
 def extract_identity(text: str) -> Tuple[Optional[str], Optional[str]]:

@@ -126,3 +126,49 @@ def test_omp_rejects_embedded_provider_error_but_not_tool_error(tmp_path):
 """
     with pytest.raises(InfrastructureError, match="nested provider failure"):
         adapter.verify_solver(terminal_only)
+
+
+def test_omp_rejects_terminal_deadline_abort_despite_zero_exit(tmp_path):
+    # oh-my-pi#7635: JSON-mode deadline aborts exit 0 and only the terminal
+    # assistant message carries stopReason "aborted".
+    value = config(tmp_path, "omp")
+    value = HarnessConfig(**{**value.__dict__, "provider": "amazon-bedrock"})
+    adapter = OmpAdapter(value)
+    transcript = (
+        '{"type":"message_end","message":{"role":"assistant","provider":"amazon-bedrock",'
+        '"model":"gpt-fixed","content":[],"stopReason":"stop"}}\n'
+        '{"type":"agent_end","messages":[{"role":"assistant","provider":"amazon-bedrock",'
+        '"model":"gpt-fixed","content":[],"stopReason":"aborted","errorMessage":"Deadline exceeded"}]}\n'
+    )
+    with pytest.raises(InfrastructureError, match="Deadline exceeded"):
+        adapter.verify_solver(transcript)
+
+
+def test_omp_ignores_midstream_abort_after_recovery(tmp_path):
+    value = config(tmp_path, "omp")
+    value = HarnessConfig(**{**value.__dict__, "provider": "amazon-bedrock"})
+    adapter = OmpAdapter(value)
+    recovered = (
+        '{"type":"message_end","message":{"role":"assistant","provider":"amazon-bedrock",'
+        '"model":"gpt-fixed","content":[],"stopReason":"aborted"}}\n'
+        '{"type":"message_end","message":{"role":"assistant","provider":"amazon-bedrock",'
+        '"model":"gpt-fixed","content":[],"stopReason":"stop"}}\n'
+    )
+    adapter.verify_solver(recovered)
+
+
+def test_omp_catches_truncated_stream_terminal_abort(tmp_path):
+    # Truncated streams (oh-my-pi#7635 class) end at turn_end with no agent_end;
+    # the turn-boundary message is then the terminal state.
+    value = config(tmp_path, "omp")
+    value = HarnessConfig(**{**value.__dict__, "provider": "amazon-bedrock"})
+    adapter = OmpAdapter(value)
+    truncated = (
+        '{"type":"message_end","message":{"role":"assistant","provider":"amazon-bedrock",'
+        '"model":"gpt-fixed","content":[],"stopReason":"stop"}}\n'
+        '{"type":"turn_end","message":{"role":"assistant","provider":"amazon-bedrock",'
+        '"model":"gpt-fixed","content":[],"stopReason":"aborted","errorMessage":"Deadline exceeded"},'
+        '"toolResults":[]}\n'
+    )
+    with pytest.raises(InfrastructureError, match="Deadline exceeded"):
+        adapter.verify_solver(truncated)

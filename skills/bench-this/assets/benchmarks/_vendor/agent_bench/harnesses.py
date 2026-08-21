@@ -10,6 +10,7 @@ from .telemetry import (
     extract_identities,
     extract_identity,
     extract_omp_identities,
+    extract_omp_terminal_message,
     parse_json_events,
     parse_omp_transcript,
     parse_usage,
@@ -254,6 +255,14 @@ class OmpAdapter(HarnessAdapter):
         """Fail the run when OMP embeds a provider error in an exit-zero transcript."""
 
         self._verify_transcript(stdout, stderr)
+        # Deadline-aborted turns exit 0 by design (oh-my-pi#7635); only the
+        # terminal assistant message carries stopReason "aborted". Classify
+        # these as infrastructure failures so they stay distinguishable from
+        # genuine "incorrect" task failures in summaries.
+        terminal = extract_omp_terminal_message(f"{stdout}\n{stderr}")
+        if isinstance(terminal, dict) and terminal.get("stopReason") == "aborted":
+            detail = terminal.get("errorMessage") or "no provider detail"
+            raise InfrastructureError(f"OMP turn aborted before completion: {detail}")
         self.verify_identity(stdout, stderr)
 
 

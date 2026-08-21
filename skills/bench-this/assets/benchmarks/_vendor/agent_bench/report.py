@@ -106,9 +106,14 @@ def write_summary(path: Path, experiment_id: str, rows: Iterable[RunResult]) -> 
         metrics = _token_metrics(values)
         native = sum(row.native_cost_usd or 0 for row in values)
         estimated = sum(row.estimated_cost_usd or 0 for row in values)
-        # Native and estimated costs are mutually exclusive per row. Combining
-        # their totals is valid only for the derived cost-per-success measure.
-        known_cost = native + estimated
+        # Rows may now carry both costs; the derived cost-per-success uses the
+        # authoritative per-row figure (native when reported, else estimated).
+        known_cost = sum(
+            row.native_cost_usd
+            if row.native_cost_usd is not None
+            else (row.estimated_cost_usd or 0)
+            for row in values
+        )
         failure_counts = Counter(
             row.failure_kind or "incorrect" for row in values if not row.passed
         )

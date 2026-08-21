@@ -329,10 +329,12 @@ class BenchmarkRunner:
         return "infrastructure"
 
     def _estimate(self, config: HarnessConfig, usage: Usage) -> Optional[float]:
-        """Estimate API-equivalent cost when no authoritative provider cost exists."""
+        """Estimate API-equivalent list-price cost alongside any provider-reported cost.
 
-        if usage.native_cost_usd is not None:
-            return None
+        Computed even when native_cost_usd exists so summaries expose
+        divergence between provider self-reporting and list prices.
+        """
+
         price = self.project.prices.get(config.model)
         provider = config.provider if config.harness in {"opencode", "omp"} else "github-copilot"
         if price is None:

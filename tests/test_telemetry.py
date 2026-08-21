@@ -104,6 +104,24 @@ def test_omp_includes_task_usage_when_agent_end_is_missing():
     assert usage.native_cost_usd == 0.03
 
 
+def test_omp_counts_subagent_once_when_stream_replays_tool_result():
+    # Real OMP streams emit message_end for every toolResult (agent-loop
+    # emitToolResult) before pairing the same object into turn_end.toolResults.
+    # Without agent_end, the fallback must not aggregate that replay twice.
+    raw = """{"type":"message_end","message":{"role":"assistant","usage":{"input":10,"output":2,"cacheRead":0,"cacheWrite":0,"cost":{"total":0.01}}}}
+{"type":"message_end","message":{"role":"toolResult","toolCallId":"call_1","toolName":"task","details":{"usage":{"input":20,"output":4,"cacheRead":3,"cacheWrite":1,"totalTokens":28,"cost":{"total":0.02}}}}}
+{"type":"turn_end","message":{"role":"assistant","usage":{"input":10,"output":2,"cacheRead":0,"cacheWrite":0,"cost":{"total":0.01}}},"toolResults":[{"role":"toolResult","toolCallId":"call_1","toolName":"task","details":{"usage":{"input":20,"output":4,"cacheRead":3,"cacheWrite":1,"totalTokens":28,"cost":{"total":0.02}}}}]}
+"""
+
+    usage = parse_omp_transcript(raw)
+
+    assert usage.input_tokens == 30
+    assert usage.output_tokens == 6
+    assert usage.cache_read_tokens == 3
+    assert usage.cache_write_tokens == 1
+    assert usage.native_cost_usd == 0.03
+
+
 def test_omp_uses_message_end_once_when_agent_end_is_missing():
     raw = """{"type":"message_end","message":{"role":"assistant","usage":{"input":10,"output":4,"reasoningTokens":2,"cacheRead":40,"cacheWrite":6,"cost":{"total":0.01}}}}
 {"type":"turn_end","message":{"role":"assistant","usage":{"input":10,"output":4,"reasoningTokens":2,"cacheRead":40,"cacheWrite":6,"cost":{"total":0.01}}}}
