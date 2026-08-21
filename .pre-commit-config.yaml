@@ -1,0 +1,15 @@
+repos:
+  - repo: local
+    hooks:
+      - id: vendored-runner-sync
+        name: Check vendored runner synchronization
+        entry: python3 scripts/sync_vendored_runner.py --check
+        language: system
+        always_run: true
+        pass_filenames: false
+      - id: markdown-format
+        name: Check Markdown formatting
+        entry: python3 scripts/format_markdown.py --check
+        language: system
+        always_run: true
+        pass_filenames: false

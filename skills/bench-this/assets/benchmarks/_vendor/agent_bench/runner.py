@@ -20,6 +20,7 @@ from .errors import BenchmarkError, CommandTimeout, InfrastructureError
 from .evaluator import EvaluatorReport, parse_evaluator_report, validate_evaluator_exit
 from .harnesses import PREFLIGHT_PROMPT, adapter_for
 from .identity import configuration_digest, task_digest, validation_environment_digest
+from .installers import render_dockerfile
 from .models import (
     HarnessConfig,
     ProjectConfig,
@@ -98,13 +99,17 @@ class BenchmarkRunner:
         self.pricing = pricing or ModelsDevPricing()
 
     def build(self) -> None:
-        """Build from the small benchmark context; source is mounted only at runtime."""
+        """Build a project image with only the configured harness executables."""
 
-        self.docker.build(
-            self.project.image.name,
-            self.project.image.dockerfile,
-            self.project.benchmark_dir,
-        )
+        configuration_files = list((self.project.benchmark_dir / "configurations").glob("*/configuration.yaml"))
+        harnesses = set()
+        if configuration_files:
+            harnesses = {config.harness for config in discover_harnesses(self.project).values()}
+        rendered = render_dockerfile(self.project.image.dockerfile, harnesses)
+        with tempfile.NamedTemporaryFile("w", suffix=".Dockerfile", encoding="utf-8") as handle:
+            handle.write(rendered)
+            handle.flush()
+            self.docker.build(self.project.image.name, Path(handle.name), self.project.benchmark_dir)
 
     def verify_auth(self, config: HarnessConfig) -> Path:
         """Verify one profile/model pairing without exposing project source."""
@@ -232,7 +237,7 @@ class BenchmarkRunner:
                 f"credential/model preflight failed with exit {result.returncode}{detail}; logs: {log_dir}"
             )
         try:
-            adapter.verify_identity(result.stdout, result.stderr)
+            adapter.verify_preflight(result.stdout, result.stderr)
         except InfrastructureError as exc:
             raise InfrastructureError(f"{exc}; logs: {log_dir}") from exc
 
@@ -329,7 +334,7 @@ class BenchmarkRunner:
         if usage.native_cost_usd is not None:
             return None
         price = self.project.prices.get(config.model)
-        provider = config.provider if config.harness == "opencode" else "github-copilot"
+        provider = config.provider if config.harness in {"opencode", "omp"} else "github-copilot"
         if price is None:
             price = self.pricing.price(provider, config.model)
         if price is None:
@@ -444,6 +449,7 @@ class BenchmarkRunner:
                     telemetry = telemetry_path.read_text(encoding="utf-8")
                     shutil.copyfile(telemetry_path, log_dir / "solver.telemetry.jsonl")
                 usage = adapter.parse_usage(solver.stdout, solver.stderr, telemetry)
+                adapter.verify_solver(solver.stdout, solver.stderr)
                 # Evaluate even after a nonzero solver exit: the workspace may
                 # contain a correct completed change, but the run remains a solver failure.
                 if solver.returncode:
