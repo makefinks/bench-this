@@ -43,6 +43,11 @@ When asked to run or diagnose the internal full-flow test or E2E verification of
 another repository, read and follow
 [the E2E verification skill](.agents/skills/bench-this-e2e/SKILL.md).
 
+## Integration changes
+
+When adding or changing a harness, provider, authentication method or policy, installer, adapter, or
+native configuration writer, follow [the integration guide](docs/adding-integrations.md).
+
 ## Runner source and vendored copy
 
 `src/agent_bench/` is the canonical development source for the benchmark runner. The copy
