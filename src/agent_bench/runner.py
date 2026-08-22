@@ -336,7 +336,7 @@ class BenchmarkRunner:
         """
 
         price = self.project.prices.get(config.model)
-        provider = config.provider if config.harness in {"opencode", "omp"} else "github-copilot"
+        provider = config.provider or "github-copilot"
         if price is None:
             price = self.pricing.price(provider, config.model)
         if price is None:

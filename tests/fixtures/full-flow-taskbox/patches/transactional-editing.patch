@@ -1,0 +1,410 @@
+diff --git a/README.md b/README.md
+index eb86b69..bf39876 100644
+--- a/README.md
++++ b/README.md
+@@ -10,6 +10,20 @@ python3 -m taskbox --store tasks.json remove 1
+ python3 -m taskbox --store tasks.json list --json
+ ```
+ 
++Stage related edits across separate commands without changing the committed list:
++
++```bash
++python3 -m taskbox --store tasks.json transaction begin
++python3 -m taskbox --store tasks.json transaction add "Review report"
++python3 -m taskbox --store tasks.json transaction complete 1
++python3 -m taskbox --store tasks.json transaction list --json
++python3 -m taskbox --store tasks.json transaction commit
++```
++
++`transaction abort` discards the staged snapshot. A commit fails if an immediate add, complete, or
++remove command changed the store after the transaction began. The staged snapshot remains available
++for inspection or abort after a conflict.
++
+ Run the tests with:
+ 
+ ```bash
+diff --git a/taskbox/cli.py b/taskbox/cli.py
+index a9bced5..fa87f53 100644
+--- a/taskbox/cli.py
++++ b/taskbox/cli.py
+@@ -6,6 +6,7 @@ from pathlib import Path
+ import sys
+ 
+ from .store import Store, StoreError
++from .transaction import Transaction
+ 
+ 
+ def parser() -> argparse.ArgumentParser:
+@@ -24,9 +25,52 @@ def parser() -> argparse.ArgumentParser:
+ 
+     listing = commands.add_parser("list")
+     listing.add_argument("--json", action="store_true")
++
++    transaction = commands.add_parser("transaction")
++    transaction_commands = transaction.add_subparsers(
++        dest="transaction_command", required=True
++    )
++    transaction_commands.add_parser("begin")
++    transaction_add = transaction_commands.add_parser("add")
++    transaction_add.add_argument("title")
++    transaction_complete = transaction_commands.add_parser("complete")
++    transaction_complete.add_argument("task_id", type=int)
++    transaction_remove = transaction_commands.add_parser("remove")
++    transaction_remove.add_argument("task_id", type=int)
++    transaction_list = transaction_commands.add_parser("list")
++    transaction_list.add_argument("--json", action="store_true")
++    transaction_commands.add_parser("commit")
++    transaction_commands.add_parser("abort")
+     return value
+ 
+ 
++def run_transaction(arguments, store: Store) -> int:
++    transaction = Transaction(store)
++    command = arguments.transaction_command
++    if command == "begin":
++        print(json.dumps({"base_revision": transaction.begin()["base_revision"]}))
++    elif command == "add":
++        print(json.dumps(transaction.add(arguments.title)))
++    elif command == "complete":
++        print(json.dumps(transaction.complete(arguments.task_id)))
++    elif command == "remove":
++        print(json.dumps(transaction.remove(arguments.task_id)))
++    elif command == "list":
++        tasks = transaction.load()["tasks"]
++        if arguments.json:
++            print(json.dumps(tasks))
++        else:
++            for task in tasks:
++                marker = "x" if task["completed"] else " "
++                print(f"{task['id']:>3} [{marker}] {task['title']}")
++    elif command == "commit":
++        print(json.dumps(transaction.commit()))
++    else:
++        transaction.abort()
++        print("transaction aborted")
++    return 0
++
++
+ def main(argv=None) -> int:
+     arguments = parser().parse_args(argv)
+     store = Store(arguments.store)
+@@ -40,6 +84,8 @@ def main(argv=None) -> int:
+         if arguments.command == "remove":
+             print(json.dumps(store.remove(arguments.task_id)))
+             return 0
++        if arguments.command == "transaction":
++            return run_transaction(arguments, store)
+         tasks = store.load()["tasks"]
+         if arguments.json:
+             print(json.dumps(tasks))
+diff --git a/taskbox/store.py b/taskbox/store.py
+index b708b1b..68579ac 100644
+--- a/taskbox/store.py
++++ b/taskbox/store.py
+@@ -10,6 +10,63 @@ class StoreError(Exception):
+     """A task operation could not be completed."""
+ 
+ 
++def write_json_atomic(path: Path, value: object) -> None:
++    """Replace one JSON document without exposing a partial write."""
++
++    path.parent.mkdir(parents=True, exist_ok=True)
++    temporary = None
++    try:
++        with tempfile.NamedTemporaryFile(
++            "w",
++            dir=path.parent,
++            prefix=f".{path.name}.",
++            delete=False,
++            encoding="utf-8",
++        ) as handle:
++            temporary = Path(handle.name)
++            handle.write(json.dumps(value, indent=2) + "\n")
++            handle.flush()
++            os.fsync(handle.fileno())
++        os.replace(temporary, path)
++    finally:
++        if temporary is not None:
++            temporary.unlink(missing_ok=True)
++
++
++def add_task(state: dict, title: str) -> dict:
++    title = title.strip()
++    if not title:
++        raise StoreError("task title must not be empty")
++    task = {
++        "id": max((task["id"] for task in state["tasks"]), default=0) + 1,
++        "title": title,
++        "completed": False,
++    }
++    state["tasks"].append(task)
++    return task
++
++
++def find_task(state: dict, task_id: int) -> dict:
++    for task in state["tasks"]:
++        if task["id"] == task_id:
++            return task
++    raise StoreError(f"task {task_id} does not exist")
++
++
++def complete_task(state: dict, task_id: int) -> dict:
++    task = find_task(state, task_id)
++    if task["completed"]:
++        raise StoreError(f"task {task_id} is already complete")
++    task["completed"] = True
++    return task
++
++
++def remove_task(state: dict, task_id: int) -> dict:
++    task = find_task(state, task_id)
++    state["tasks"].remove(task)
++    return task
++
++
+ class Store:
+     """Read and write one JSON task list."""
+ 
+@@ -28,65 +85,29 @@ class Store:
+ 
+     def save(self, state: dict) -> None:
+         self._validate(state)
+-        self.path.parent.mkdir(parents=True, exist_ok=True)
+-        temporary = None
+-        try:
+-            with tempfile.NamedTemporaryFile(
+-                "w",
+-                dir=self.path.parent,
+-                prefix=f".{self.path.name}.",
+-                delete=False,
+-                encoding="utf-8",
+-            ) as handle:
+-                temporary = Path(handle.name)
+-                handle.write(json.dumps(state, indent=2) + "\n")
+-                handle.flush()
+-                os.fsync(handle.fileno())
+-            os.replace(temporary, self.path)
+-        finally:
+-            if temporary is not None:
+-                temporary.unlink(missing_ok=True)
++        write_json_atomic(self.path, state)
+ 
+     def add(self, title: str) -> dict:
+-        title = title.strip()
+-        if not title:
+-            raise StoreError("task title must not be empty")
+         state = self.load()
+-        task = {
+-            "id": max((task["id"] for task in state["tasks"]), default=0) + 1,
+-            "title": title,
+-            "completed": False,
+-        }
+-        state["tasks"].append(task)
++        task = add_task(state, title)
+         state["revision"] += 1
+         self.save(state)
+         return task
+ 
+     def complete(self, task_id: int) -> dict:
+         state = self.load()
+-        task = self._find(state, task_id)
+-        if task["completed"]:
+-            raise StoreError(f"task {task_id} is already complete")
+-        task["completed"] = True
++        task = complete_task(state, task_id)
+         state["revision"] += 1
+         self.save(state)
+         return task
+ 
+     def remove(self, task_id: int) -> dict:
+         state = self.load()
+-        task = self._find(state, task_id)
+-        state["tasks"].remove(task)
++        task = remove_task(state, task_id)
+         state["revision"] += 1
+         self.save(state)
+         return task
+ 
+-    @staticmethod
+-    def _find(state: dict, task_id: int) -> dict:
+-        for task in state["tasks"]:
+-            if task["id"] == task_id:
+-                return task
+-        raise StoreError(f"task {task_id} does not exist")
+-
+     @staticmethod
+     def _validate(state: object) -> None:
+         if not isinstance(state, dict) or set(state) != {"revision", "tasks"}:
+diff --git a/taskbox/transaction.py b/taskbox/transaction.py
+new file mode 100644
+index 0000000..ffed6b9
+--- /dev/null
++++ b/taskbox/transaction.py
+@@ -0,0 +1,100 @@
++"""Durable transaction snapshots for Taskbox."""
++
++import json
++from pathlib import Path
++
++from .store import (
++    Store,
++    StoreError,
++    add_task,
++    complete_task,
++    remove_task,
++    write_json_atomic,
++)
++
++
++class Transaction:
++    """Stage task edits against one committed store revision."""
++
++    def __init__(self, store: Store):
++        self.store = store
++        self.path = Path(f"{store.path}.transaction")
++
++    def begin(self) -> dict:
++        if self.path.exists():
++            raise StoreError("a transaction is already open")
++        committed = self.store.load()
++        transaction = {
++            "base_revision": committed["revision"],
++            "tasks": committed["tasks"],
++        }
++        self.save(transaction)
++        return transaction
++
++    def load(self) -> dict:
++        if not self.path.exists():
++            raise StoreError("no transaction is open")
++        try:
++            transaction = json.loads(self.path.read_text(encoding="utf-8"))
++        except json.JSONDecodeError as exc:
++            raise StoreError(f"malformed transaction: {exc.msg}") from exc
++        self._validate(transaction)
++        return transaction
++
++    def save(self, transaction: dict) -> None:
++        self._validate(transaction)
++        write_json_atomic(self.path, transaction)
++
++    def add(self, title: str) -> dict:
++        transaction = self.load()
++        task = add_task(transaction, title)
++        self.save(transaction)
++        return task
++
++    def complete(self, task_id: int) -> dict:
++        transaction = self.load()
++        task = complete_task(transaction, task_id)
++        self.save(transaction)
++        return task
++
++    def remove(self, task_id: int) -> dict:
++        transaction = self.load()
++        task = remove_task(transaction, task_id)
++        self.save(transaction)
++        return task
++
++    def commit(self) -> dict:
++        transaction = self.load()
++        committed = self.store.load()
++        if committed["revision"] != transaction["base_revision"]:
++            raise StoreError(
++                "transaction conflict: committed tasks changed after transaction begin"
++            )
++        published = {
++            "revision": committed["revision"] + 1,
++            "tasks": transaction["tasks"],
++        }
++        self.store.save(published)
++        self.path.unlink()
++        return published
++
++    def abort(self) -> None:
++        self.load()
++        self.path.unlink()
++
++    @staticmethod
++    def _validate(transaction: object) -> None:
++        if not isinstance(transaction, dict) or set(transaction) != {
++            "base_revision",
++            "tasks",
++        }:
++            raise StoreError("malformed transaction: expected base_revision and tasks")
++        try:
++            Store._validate(
++                {
++                    "revision": transaction["base_revision"],
++                    "tasks": transaction["tasks"],
++                }
++            )
++        except StoreError as exc:
++            raise StoreError(f"malformed transaction: {exc}") from exc
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index 51717b5..081fd12 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -75,6 +75,62 @@ class TaskboxCliTest(unittest.TestCase):
+             '{"revision": "bad"}\n',
+         )
+ 
++    def test_transaction_snapshot_is_isolated_and_commits_once(self):
++        self.run_taskbox("add", "first")
++        begun = self.run_taskbox("transaction", "begin")
++        self.assertEqual(json.loads(begun.stdout), {"base_revision": 1})
++        self.run_taskbox("transaction", "add", "second")
++        self.run_taskbox("transaction", "complete", "1")
++
++        committed_list = self.run_taskbox("list", "--json")
++        transaction_list = self.run_taskbox("transaction", "list", "--json")
++        self.assertEqual(
++            json.loads(committed_list.stdout),
++            [{"id": 1, "title": "first", "completed": False}],
++        )
++        self.assertEqual(
++            json.loads(transaction_list.stdout),
++            [
++                {"id": 1, "title": "first", "completed": True},
++                {"id": 2, "title": "second", "completed": False},
++            ],
++        )
++
++        committed = self.run_taskbox("transaction", "commit")
++        self.assertEqual(committed.returncode, 0, committed.stderr)
++        self.assertEqual(json.loads(committed.stdout)["revision"], 2)
++
++    def test_transaction_abort_discards_staged_changes(self):
++        self.run_taskbox("add", "first")
++        self.run_taskbox("transaction", "begin")
++        self.run_taskbox("transaction", "remove", "1")
++        aborted = self.run_taskbox("transaction", "abort")
++        self.assertEqual(aborted.returncode, 0, aborted.stderr)
++        listed = self.run_taskbox("list", "--json")
++        self.assertEqual(
++            json.loads(listed.stdout),
++            [{"id": 1, "title": "first", "completed": False}],
++        )
++        restarted = self.run_taskbox("transaction", "begin")
++        self.assertEqual(restarted.returncode, 0, restarted.stderr)
++
++    def test_transaction_conflict_preserves_both_states(self):
++        self.run_taskbox("add", "first")
++        self.run_taskbox("transaction", "begin")
++        self.run_taskbox("transaction", "complete", "1")
++        self.run_taskbox("add", "outside")
++
++        conflict = self.run_taskbox("transaction", "commit")
++        self.assertEqual(conflict.returncode, 2)
++        self.assertIn("transaction conflict", conflict.stderr)
++        staged = self.run_taskbox("transaction", "list", "--json")
++        self.assertEqual(json.loads(staged.stdout)[0]["completed"], True)
++        committed = self.run_taskbox("list", "--json")
++        self.assertEqual(
++            [task["title"] for task in json.loads(committed.stdout)],
++            ["first", "outside"],
++        )
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

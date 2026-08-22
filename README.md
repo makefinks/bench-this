@@ -32,6 +32,7 @@ npx skills add makefinks/bench-this
 | Native Copilot CLI | ✓                                 |                   |                               |                           |                             |                                   |
 | OpenCode           | ✓                                 | ✓                 |                               | ✓                         | ✓                           | ✓                                 |
 | Oh My Pi           | ✓                                 |                   | ✓                             |                           |                             | ✓                                 |
+| Pi                 |                                   |                   | ✓                             |                           |                             | ✓                                 |
 
 Native Copilot CLI has no separate provider setting; it always uses your GitHub Copilot account.
 
@@ -233,9 +234,18 @@ python <skill-directory>/scripts/configure.py <target-repository> \
   --auth-profile <profile>
 ```
 
+For Pi, the agent sets the explicit provider:
+
+```bash
+python <skill-directory>/scripts/configure.py <target-repository> \
+  --harness pi \
+  --provider openai-codex \
+  --model <pinned-model> \
+  --auth-profile <profile>
+```
+
 Amazon Bedrock treatments require `--provider amazon-bedrock` and an explicit
-`--bedrock-region`. Their API key uses a runner-managed profile rather than OpenCode's interactive
-login:
+`--bedrock-region`. OpenCode, Oh My Pi, and Pi use runner-managed bearer-token profiles:
 
 ```bash
 python <skill-directory>/scripts/configure.py <target-repository> \
@@ -245,6 +255,9 @@ python <skill-directory>/scripts/configure.py <target-repository> \
   --model <pinned-bedrock-model-id> \
   --auth-profile <profile>
 ```
+
+Use `--harness pi` with the same provider, region, model, and profile fields for a Pi Bedrock
+treatment.
 
 Copilot Business accounts used through OpenCode require the dedicated
 `--github-copilot-business` flag. The generator then writes the fixed Business API endpoint into the
@@ -262,7 +275,7 @@ harnesses, providers, overlays, and reproducibility rules.
 ### 5. Authenticate, then ask the agent to run
 
 Authentication is the one intentionally user-facing setup step because it may require a browser or
-device flow, or a provider token. Profiles live outside the target repository under
+device flow, a provider token, or AWS credentials. Profiles live outside the target repository under
 `~/.agent-bench/auth/`, and login happens without project source mounted:
 
 ```bash
@@ -272,6 +285,10 @@ device flow, or a provider token. Profiles live outside the target repository un
 # Or, for native Copilot CLI:
 ./benchmarks/run.py auth login --harness copilot --profile <profile>
 
+# Pi OAuth login prints the isolated PI_CODING_AGENT_DIR command to run.
+./benchmarks/run.py auth login \
+  --harness pi --provider openai-codex --profile <profile>
+
 # Manual Amazon Bedrock setup; the user runs this in their own terminal.
 ./benchmarks/run.py auth login \
   --harness opencode --provider amazon-bedrock --profile <profile>
@@ -279,13 +296,14 @@ device flow, or a provider token. Profiles live outside the target repository un
 
 The agent checks for the exact benchmark profile only after an approved treatment identifies the
 required harness, provider, and profile. An existing benchmark profile is reused. The runner never
-silently imports the user's normal Copilot, OpenCode, GitHub CLI, browser, or home-directory
-credentials. If the profile is missing, the agent offers to start the appropriate setup or gives you
-the same command to run yourself. You personally complete browser or device authorization. For
-agent-assisted Bedrock setup, the agent asks for the token first and uses the bundled
-non-interactive provisioning helper. The `auth login` command above is the manual alternative. In
-either path, the runner injects the stored token as `AWS_BEARER_TOKEN_BEDROCK` and never writes it
-into treatment files.
+silently imports the user's normal Copilot, OpenCode, Pi, GitHub CLI, browser, AWS, or
+home-directory
+credentials. If the profile is missing, the agent offers the supported setup or gives you the same
+command to run yourself. You personally complete browser or device authorization.
+
+The non-interactive Bedrock helper accepts credentials only through its process environment.
+OpenCode, Oh My Pi, and Pi profiles inject a bearer token as `AWS_BEARER_TOKEN_BEDROCK`. The helper
+reads it from `AGENT_BENCH_BEDROCK_API_KEY`. Credentials are never written into treatment files.
 
 After login, you or the agent verify the matching profile and harness before running a treatment:
 
@@ -501,9 +519,10 @@ The rest of the repository is intentionally small:
 ```text
 .
 ├── src/agent_bench/                  # Runner package
-├── tests/                            # Unit and Docker integration tests
+├── tests/                            # Unit, fixture, and Docker integration tests
+│   └── fixtures/full-flow-taskbox/   # Reviewable six-commit E2E project history
 ├── scripts/
-│   ├── create_synthetic_fixture.py   # Two-commit smoke-test project
+│   ├── create_full_flow_fixture.py   # Ready-to-run internal E2E target
 │   ├── format_markdown.py            # Repository Markdown formatter
 │   └── sync_vendored_runner.py       # Refreshes runner and scaffold assets
 └── skills/bench-this/               # Skill, references, helpers, and scaffold
@@ -529,11 +548,17 @@ python3 scripts/sync_vendored_runner.py
 python3 scripts/sync_vendored_runner.py --check
 ```
 
-For a disposable end-to-end smoke-test repository:
+Create a disposable target for the agent-driven full-flow E2E workflow:
 
 ```bash
-python3 scripts/create_synthetic_fixture.py --help
+python3 scripts/create_full_flow_fixture.py
 ```
+
+The command prints the retained repository path, six commit IDs, and installed skill path as JSON.
+It creates Taskbox source history and installs the current skill without committing it. The E2E
+skill
+then performs discovery, benchmark authoring, treatment configuration, authentication verification,
+execution, and telemetry inspection.
 
 Most tests use fake Docker implementations to cover ordering, mounts, isolation, reporting, and
 failure classification. Docker integration tests cover the smaller set of behavior that needs a

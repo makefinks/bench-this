@@ -13,7 +13,7 @@ from typing import Dict, Iterable, Optional
 
 
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
-SUPPORTED_HARNESSES = {"copilot", "omp", "opencode"}
+SUPPORTED_HARNESSES = {"copilot", "omp", "opencode", "pi"}
 SUPPORTED_OPENCODE_PROVIDERS = {
     "amazon-bedrock",
     "github-copilot",
@@ -22,6 +22,7 @@ SUPPORTED_OPENCODE_PROVIDERS = {
     "opencode-go",
 }
 SUPPORTED_OMP_PROVIDERS = {"amazon-bedrock", "github-copilot", "openai-codex"}
+SUPPORTED_PI_PROVIDERS = {"amazon-bedrock", "openai-codex"}
 GITHUB_COPILOT_BUSINESS_BASE_URL = "https://api.business.githubcopilot.com"
 AWS_REGION_PATTERN = re.compile(r"^[a-z]{2}(?:-[a-z0-9]+)+-[0-9]+$")
 
@@ -89,8 +90,13 @@ def create_configuration(
     if harness == "omp" and provider not in SUPPORTED_OMP_PROVIDERS:
         supported = ", ".join(sorted(SUPPORTED_OMP_PROVIDERS))
         raise ValueError(f"OMP configurations require --provider: {supported}")
+    if harness == "pi" and provider not in SUPPORTED_PI_PROVIDERS:
+        supported = ", ".join(sorted(SUPPORTED_PI_PROVIDERS))
+        raise ValueError(f"Pi configurations require --provider: {supported}")
     if harness == "copilot" and provider is not None:
-        raise ValueError("--provider applies only to OpenCode and Oh My Pi configurations")
+        raise ValueError(
+            "--provider applies only to OpenCode, Oh My Pi, and Pi configurations"
+        )
     if github_copilot_business and (harness != "opencode" or provider != "github-copilot"):
         raise ValueError(
             "--github-copilot-business requires --harness opencode "
@@ -132,7 +138,7 @@ def create_configuration(
         (temporary / "harness").mkdir()
         (temporary / "workspace").mkdir()
         manifest_lines = [f"id: {config_id}", f"harness: {harness}"]
-        if harness in {"opencode", "omp"}:
+        if harness in {"opencode", "omp", "pi"}:
             manifest_lines.extend(
                 [
                     f"provider: {provider}",
@@ -201,7 +207,11 @@ def main() -> int:
     parser.add_argument("--harness", default="opencode", choices=sorted(SUPPORTED_HARNESSES))
     parser.add_argument(
         "--provider",
-        choices=sorted(SUPPORTED_OPENCODE_PROVIDERS | SUPPORTED_OMP_PROVIDERS),
+        choices=sorted(
+            SUPPORTED_OPENCODE_PROVIDERS
+            | SUPPORTED_OMP_PROVIDERS
+            | SUPPORTED_PI_PROVIDERS
+        ),
     )
     parser.add_argument("--github-copilot-business", action="store_true")
     parser.add_argument("--bedrock-region")

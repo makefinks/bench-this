@@ -1,0 +1,114 @@
+diff --git a/README.md b/README.md
+index 6121964..eb86b69 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,7 @@
+ # Taskbox
+ 
+ Taskbox is a small JSON-backed task list with no external dependencies.
++State updates replace the store atomically, and malformed stores fail without being overwritten.
+ 
+ ```bash
+ python3 -m taskbox --store tasks.json add "Write report"
+diff --git a/taskbox/store.py b/taskbox/store.py
+index 052a6dd..b708b1b 100644
+--- a/taskbox/store.py
++++ b/taskbox/store.py
+@@ -1,7 +1,9 @@
+ """Persistent task-list operations."""
+ 
+ import json
++import os
+ from pathlib import Path
++import tempfile
+ 
+ 
+ class StoreError(Exception):
+@@ -17,11 +19,33 @@ class Store:
+     def load(self) -> dict:
+         if not self.path.exists():
+             return {"revision": 0, "tasks": []}
+-        return json.loads(self.path.read_text(encoding="utf-8"))
++        try:
++            state = json.loads(self.path.read_text(encoding="utf-8"))
++        except json.JSONDecodeError as exc:
++            raise StoreError(f"malformed task store: {exc.msg}") from exc
++        self._validate(state)
++        return state
+ 
+     def save(self, state: dict) -> None:
++        self._validate(state)
+         self.path.parent.mkdir(parents=True, exist_ok=True)
+-        self.path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
++        temporary = None
++        try:
++            with tempfile.NamedTemporaryFile(
++                "w",
++                dir=self.path.parent,
++                prefix=f".{self.path.name}.",
++                delete=False,
++                encoding="utf-8",
++            ) as handle:
++                temporary = Path(handle.name)
++                handle.write(json.dumps(state, indent=2) + "\n")
++                handle.flush()
++                os.fsync(handle.fileno())
++            os.replace(temporary, self.path)
++        finally:
++            if temporary is not None:
++                temporary.unlink(missing_ok=True)
+ 
+     def add(self, title: str) -> dict:
+         title = title.strip()
+@@ -62,3 +86,30 @@ class Store:
+             if task["id"] == task_id:
+                 return task
+         raise StoreError(f"task {task_id} does not exist")
++
++    @staticmethod
++    def _validate(state: object) -> None:
++        if not isinstance(state, dict) or set(state) != {"revision", "tasks"}:
++            raise StoreError("malformed task store: expected revision and tasks")
++        revision = state["revision"]
++        tasks = state["tasks"]
++        if not isinstance(revision, int) or isinstance(revision, bool) or revision < 0:
++            raise StoreError("malformed task store: revision must be non-negative")
++        if not isinstance(tasks, list):
++            raise StoreError("malformed task store: tasks must be a list")
++        identifiers = set()
++        for task in tasks:
++            if not isinstance(task, dict) or set(task) != {"id", "title", "completed"}:
++                raise StoreError("malformed task store: invalid task")
++            task_id = task["id"]
++            if (
++                not isinstance(task_id, int)
++                or isinstance(task_id, bool)
++                or task_id <= 0
++                or task_id in identifiers
++                or not isinstance(task["title"], str)
++                or not task["title"]
++                or not isinstance(task["completed"], bool)
++            ):
++                raise StoreError("malformed task store: invalid task")
++            identifiers.add(task_id)
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index b77d9ad..51717b5 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -65,6 +65,16 @@ class TaskboxCliTest(unittest.TestCase):
+         self.assertEqual(result.returncode, 2)
+         self.assertIn("does not exist", result.stderr)
+ 
++    def test_malformed_state_is_not_overwritten(self):
++        self.store.write_text('{"revision": "bad"}\n', encoding="utf-8")
++        result = self.run_taskbox("add", "new task")
++        self.assertEqual(result.returncode, 2)
++        self.assertIn("malformed task store", result.stderr)
++        self.assertEqual(
++            self.store.read_text(encoding="utf-8"),
++            '{"revision": "bad"}\n',
++        )
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

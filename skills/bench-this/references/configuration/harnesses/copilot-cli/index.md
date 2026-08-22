@@ -17,7 +17,7 @@ python <skill-directory>/scripts/configure.py <repository> \
 
 The generator creates native Copilot manifests without a provider or OpenCode configuration file.
 Local skills work with all supported harnesses. Copilot CLI configurations do not use a provider;
-OpenCode and Oh My Pi configurations require one. The command refuses to overwrite an existing
+OpenCode, Oh My Pi, and Pi configurations require one. The command refuses to overwrite an existing
 configuration.
 
 ## Authentication

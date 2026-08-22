@@ -28,6 +28,7 @@ SUPPORTED_OPENCODE_PROVIDERS = {
     "opencode-go",
 }
 SUPPORTED_OMP_PROVIDERS = {AMAZON_BEDROCK_PROVIDER, "github-copilot", "openai-codex"}
+SUPPORTED_PI_PROVIDERS = {AMAZON_BEDROCK_PROVIDER, "openai-codex"}
 AWS_REGION_PATTERN = re.compile(r"^[a-z]{2}(?:-[a-z0-9]+)+-[0-9]+$")
 
 
@@ -289,20 +290,22 @@ def load_harness(path: Path) -> HarnessConfig:
             f"configuration id {config_id!r} must match directory {path.parent.name!r}"
         )
     harness = data["harness"]
-    if harness not in {"copilot", "opencode", "omp"}:
-        raise ConfigurationError(f"{path}: harness must be copilot, omp, or opencode")
+    if harness not in {"copilot", "opencode", "omp", "pi"}:
+        raise ConfigurationError(f"{path}: harness must be copilot, omp, opencode, or pi")
     model = data["model"]
     if not isinstance(model, str) or not model.strip() or model == "auto":
         raise ConfigurationError(f"{path}: model must be explicitly pinned")
     provider = data.get("provider")
     agent = data.get("agent")
-    if harness in {"opencode", "omp"}:
-        supported_providers = SUPPORTED_OPENCODE_PROVIDERS if harness == "opencode" else SUPPORTED_OMP_PROVIDERS
+    if harness in {"opencode", "omp", "pi"}:
+        supported_providers = {
+            "opencode": SUPPORTED_OPENCODE_PROVIDERS,
+            "omp": SUPPORTED_OMP_PROVIDERS,
+            "pi": SUPPORTED_PI_PROVIDERS,
+        }[harness]
         if provider not in supported_providers:
             supported = ", ".join(sorted(supported_providers))
-            raise ConfigurationError(
-                f"{harness} provider must be one of: {supported}"
-            )
+            raise ConfigurationError(f"{harness} provider must be one of: {supported}")
         if harness == "opencode" and (not isinstance(agent, str) or not agent):
             raise ConfigurationError("OpenCode configurations require an agent")
     arguments = data.get("arguments", [])

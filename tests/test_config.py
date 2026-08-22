@@ -387,6 +387,48 @@ auth_profile: bedrock
     with pytest.raises(ConfigurationError, match="require a valid region"):
         load_harness(path)
 
+def test_schema_accepts_pi_codex_provider(tmp_path):
+    root = tmp_path / "pi-codex"
+    (root / "harness").mkdir(parents=True)
+    (root / "workspace").mkdir()
+    path = write(
+        root / "configuration.yaml",
+        """id: pi-codex
+harness: pi
+provider: openai-codex
+model: gpt-5.4
+harness_config: harness
+workspace_config: workspace
+auth_profile: codex
+""",
+    )
+
+    config = load_harness(path)
+
+    assert config.provider == "openai-codex"
+    assert config.qualified_model == "openai-codex/gpt-5.4"
+    assert config.agent is None
+
+
+def test_pi_provider_allowlist_rejects_unrelated_provider(tmp_path):
+    root = tmp_path / "pi-invalid"
+    (root / "harness").mkdir(parents=True)
+    (root / "workspace").mkdir()
+    path = write(
+        root / "configuration.yaml",
+        """id: pi-invalid
+harness: pi
+provider: github-copilot
+model: gpt-fixed
+harness_config: harness
+workspace_config: workspace
+auth_profile: work
+""",
+    )
+
+    with pytest.raises(ConfigurationError, match="pi provider must be one of"):
+        load_harness(path)
+
 
 def test_schema_rejects_path_escape(tmp_path):
     path = write(

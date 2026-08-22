@@ -1,0 +1,59 @@
+diff --git a/README.md b/README.md
+index bf39876..8164dcb 100644
+--- a/README.md
++++ b/README.md
+@@ -8,6 +8,7 @@ python3 -m taskbox --store tasks.json add "Write report"
+ python3 -m taskbox --store tasks.json complete 1
+ python3 -m taskbox --store tasks.json remove 1
+ python3 -m taskbox --store tasks.json list --json
++python3 -m taskbox --store tasks.json search "report" --json
+ ```
+ 
+ Stage related edits across separate commands without changing the committed list:
+diff --git a/taskbox/cli.py b/taskbox/cli.py
+index fa87f53..c3d6b60 100644
+--- a/taskbox/cli.py
++++ b/taskbox/cli.py
+@@ -26,6 +26,10 @@ def parser() -> argparse.ArgumentParser:
+     listing = commands.add_parser("list")
+     listing.add_argument("--json", action="store_true")
+ 
++    search = commands.add_parser("search")
++    search.add_argument("query")
++    search.add_argument("--json", action="store_true")
++
+     transaction = commands.add_parser("transaction")
+     transaction_commands = transaction.add_subparsers(
+         dest="transaction_command", required=True
+@@ -87,6 +91,9 @@ def main(argv=None) -> int:
+         if arguments.command == "transaction":
+             return run_transaction(arguments, store)
+         tasks = store.load()["tasks"]
++        if arguments.command == "search":
++            query = arguments.query.casefold()
++            tasks = [task for task in tasks if query in task["title"].casefold()]
+         if arguments.json:
+             print(json.dumps(tasks))
+         else:
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index 081fd12..9b74457 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -131,6 +131,17 @@ class TaskboxCliTest(unittest.TestCase):
+             ["first", "outside"],
+         )
+ 
++    def test_search_matches_titles_case_insensitively(self):
++        self.run_taskbox("add", "Write report")
++        self.run_taskbox("add", "Review REPORT")
++        self.run_taskbox("add", "Plan release")
++        result = self.run_taskbox("search", "report", "--json")
++        self.assertEqual(result.returncode, 0, result.stderr)
++        self.assertEqual(
++            [task["title"] for task in json.loads(result.stdout)],
++            ["Write report", "Review REPORT"],
++        )
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

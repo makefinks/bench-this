@@ -12,6 +12,7 @@ from .config import (
     AMAZON_BEDROCK_PROVIDER,
     SUPPORTED_OMP_PROVIDERS,
     SUPPORTED_OPENCODE_PROVIDERS,
+    SUPPORTED_PI_PROVIDERS,
     discover_harnesses,
     discover_tasks,
     load_project,
@@ -21,7 +22,11 @@ from .errors import BenchmarkError, ConfigurationError, InfrastructureError
 from .harnesses import adapter_for
 from .runner import DEFAULT_JOBS, BenchmarkRunner
 from .scaffold import scaffold
-from .workspace import auth_profile_root, store_bedrock_api_key, store_omp_credential
+from .workspace import (
+    auth_profile_root,
+    store_bedrock_api_key,
+    store_omp_credential,
+)
 
 
 def _benchmark_dir(value: str) -> Path:
@@ -81,15 +86,21 @@ def _parser() -> argparse.ArgumentParser:
     auth = commands.add_parser("auth")
     auth_commands = auth.add_subparsers(dest="auth_command", required=True)
     login = auth_commands.add_parser("login")
-    login.add_argument("--harness", choices=("copilot", "omp", "opencode"), required=True)
+    login.add_argument(
+        "--harness", choices=("copilot", "omp", "opencode", "pi"), required=True
+    )
     login.add_argument("--profile", required=True)
     login.add_argument(
         "--provider",
-        choices=sorted(SUPPORTED_OPENCODE_PROVIDERS | SUPPORTED_OMP_PROVIDERS),
+        choices=sorted(
+            SUPPORTED_OPENCODE_PROVIDERS
+            | SUPPORTED_OMP_PROVIDERS
+            | SUPPORTED_PI_PROVIDERS
+        ),
     )
     verify = auth_commands.add_parser("verify")
     verify.add_argument("--profile", required=True)
-    verify.add_argument("--harness", choices=("copilot", "omp", "opencode"))
+    verify.add_argument("--harness", choices=("copilot", "omp", "opencode", "pi"))
     return parser
 
 
@@ -99,7 +110,7 @@ def _login(project, harness: str, profile: str, provider=None) -> None:
     if not profile.replace("-", "").isalnum() or profile.lower() != profile:
         raise ConfigurationError("profile must use lowercase letters, digits, and hyphens")
     if harness == "copilot" and provider is not None:
-        raise ConfigurationError("--provider applies only to OpenCode and OMP")
+        raise ConfigurationError("--provider applies only to OpenCode, OMP, and Pi")
     if harness == "opencode" and provider not in SUPPORTED_OPENCODE_PROVIDERS:
         raise ConfigurationError(
             "OpenCode login requires --provider "
@@ -110,18 +121,32 @@ def _login(project, harness: str, profile: str, provider=None) -> None:
             "OMP login requires --provider "
             + ", ".join(sorted(SUPPORTED_OMP_PROVIDERS))
         )
+    if harness == "pi" and provider not in SUPPORTED_PI_PROVIDERS:
+        raise ConfigurationError(
+            "Pi login requires --provider "
+            + ", ".join(sorted(SUPPORTED_PI_PROVIDERS))
+        )
     destination = auth_profile_root(profile, harness)
     destination.mkdir(parents=True, exist_ok=True)
-    if harness == "omp":
+    if harness in {"omp", "pi"}:
         if provider == AMAZON_BEDROCK_PROVIDER:
-            token = getpass.getpass(f"{provider} API token: ")
-            store_omp_credential(profile, provider, token)
+            if harness == "omp":
+                token = getpass.getpass(f"{provider} API token: ")
+                store_omp_credential(profile, provider, token)
+            else:
+                token = getpass.getpass("Amazon Bedrock API key: ")
+                store_bedrock_api_key(profile, token, harness="pi")
         else:
-            omp_root = destination / ".omp"
+            agent_dir = (
+                destination / ".omp" / "agent"
+                if harness == "omp"
+                else destination / ".pi" / "agent"
+            )
+            executable = "omp" if harness == "omp" else "pi"
             raise ConfigurationError(
-                "OMP OAuth login must be completed in the user's terminal. Run:\n"
-                f"PI_CODING_AGENT_DIR={omp_root / 'agent'} omp\n"
-                f"Then run /login {provider} inside OMP and retry."
+                f"{harness.upper()} OAuth login must be completed in the user's terminal. Run:\n"
+                f"PI_CODING_AGENT_DIR={agent_dir} {executable}\n"
+                f"Then run /login {provider} inside {harness.upper()} and retry."
             )
         print(f"Saved {harness} profile under {destination}")
         return

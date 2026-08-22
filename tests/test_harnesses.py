@@ -1,7 +1,12 @@
 import pytest
 
 from agent_bench.errors import IdentityMismatch, InfrastructureError
-from agent_bench.harnesses import CopilotAdapter, OmpAdapter, OpenCodeAdapter
+from agent_bench.harnesses import (
+    CopilotAdapter,
+    OmpAdapter,
+    OpenCodeAdapter,
+    PiAdapter,
+)
 from agent_bench.models import HarnessConfig
 
 
@@ -94,6 +99,51 @@ def test_omp_environment_isolated_and_supports_bedrock_region(tmp_path):
     assert environment["PI_CONFIG_DIR"] == ".omp"
     assert environment["PI_CODING_AGENT_DIR"] == "/home/bench/.omp/agent"
     assert environment["AWS_REGION"] == "eu-west-1"
+
+def test_pi_command_and_environment_are_isolated(tmp_path):
+    value = config(tmp_path, "pi")
+    value = HarnessConfig(**{**value.__dict__, "provider": "openai-codex"})
+    adapter = PiAdapter(value)
+
+    command = adapter.command("fix it")
+    assert command[:4] == ["pi", "--print", "--mode", "json"]
+    assert "--no-session" in command
+    assert "--approve" in command
+    assert command[command.index("--model") + 1] == "openai-codex/gpt-fixed"
+
+    environment = adapter.environment()
+    assert environment["PI_CODING_AGENT_DIR"] == "/home/bench/.pi/agent"
+    assert environment["PI_OFFLINE"] == "1"
+    assert environment["PI_TELEMETRY"] == "0"
+    assert "AWS_PROFILE" not in environment
+
+
+def test_pi_bedrock_uses_default_aws_profile_and_pinned_region(tmp_path):
+    value = config(tmp_path, "pi")
+    value = HarnessConfig(
+        **{
+            **value.__dict__,
+            "provider": "amazon-bedrock",
+            "region": "eu-west-1",
+        }
+    )
+
+    environment = PiAdapter(value).environment()
+
+    assert "AWS_PROFILE" not in environment
+    assert environment["AWS_REGION"] == "eu-west-1"
+
+
+def test_pi_preflight_requires_matching_identity_and_exact_response(tmp_path):
+    value = config(tmp_path, "pi")
+    value = HarnessConfig(**{**value.__dict__, "provider": "openai-codex"})
+    adapter = PiAdapter(value)
+    successful = """{"type":"message_end","message":{"role":"assistant","provider":"openai-codex","model":"gpt-fixed","content":[{"type":"text","text":"BENCH_PREFLIGHT_OK"}],"stopReason":"stop"}}
+"""
+
+    adapter.verify_preflight(successful)
+    with pytest.raises(IdentityMismatch):
+        adapter.verify_preflight(successful.replace("openai-codex", "amazon-bedrock"))
 
 
 def test_omp_preflight_requires_successful_exact_response(tmp_path):

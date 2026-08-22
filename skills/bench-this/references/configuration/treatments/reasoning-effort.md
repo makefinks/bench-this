@@ -13,6 +13,7 @@ Read the selected harness's native reasoning-effort reference before creating th
 
 - [OpenCode reasoning effort](../harnesses/opencode/reasoning-effort.md)
 - [Copilot CLI reasoning effort](../harnesses/copilot-cli/reasoning-effort.md)
+- [Pi reasoning effort](../harnesses/pi/reasoning-effort.md)
 
 ## Verify before measuring
 

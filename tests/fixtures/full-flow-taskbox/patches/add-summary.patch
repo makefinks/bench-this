@@ -1,0 +1,70 @@
+diff --git a/README.md b/README.md
+index 8164dcb..9750ff1 100644
+--- a/README.md
++++ b/README.md
+@@ -9,6 +9,7 @@ python3 -m taskbox --store tasks.json complete 1
+ python3 -m taskbox --store tasks.json remove 1
+ python3 -m taskbox --store tasks.json list --json
+ python3 -m taskbox --store tasks.json search "report" --json
++python3 -m taskbox --store tasks.json summary --json
+ ```
+ 
+ Stage related edits across separate commands without changing the committed list:
+diff --git a/taskbox/cli.py b/taskbox/cli.py
+index c3d6b60..0cf50d0 100644
+--- a/taskbox/cli.py
++++ b/taskbox/cli.py
+@@ -30,6 +30,9 @@ def parser() -> argparse.ArgumentParser:
+     search.add_argument("query")
+     search.add_argument("--json", action="store_true")
+ 
++    summary = commands.add_parser("summary")
++    summary.add_argument("--json", action="store_true")
++
+     transaction = commands.add_parser("transaction")
+     transaction_commands = transaction.add_subparsers(
+         dest="transaction_command", required=True
+@@ -94,6 +97,21 @@ def main(argv=None) -> int:
+         if arguments.command == "search":
+             query = arguments.query.casefold()
+             tasks = [task for task in tasks if query in task["title"].casefold()]
++        if arguments.command == "summary":
++            completed = sum(task["completed"] for task in tasks)
++            summary = {
++                "total": len(tasks),
++                "completed": completed,
++                "open": len(tasks) - completed,
++            }
++            if arguments.json:
++                print(json.dumps(summary))
++            else:
++                print(
++                    f"{summary['open']} open, {summary['completed']} completed, "
++                    f"{summary['total']} total"
++                )
++            return 0
+         if arguments.json:
+             print(json.dumps(tasks))
+         else:
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index 9b74457..41cce4f 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -142,6 +142,17 @@ class TaskboxCliTest(unittest.TestCase):
+             ["Write report", "Review REPORT"],
+         )
+ 
++    def test_summary_counts_open_and_completed_tasks(self):
++        self.run_taskbox("add", "first")
++        self.run_taskbox("add", "second")
++        self.run_taskbox("complete", "1")
++        result = self.run_taskbox("summary", "--json")
++        self.assertEqual(result.returncode, 0, result.stderr)
++        self.assertEqual(
++            json.loads(result.stdout),
++            {"total": 2, "completed": 1, "open": 1},
++        )
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

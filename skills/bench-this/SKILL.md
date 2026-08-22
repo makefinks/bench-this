@@ -4,8 +4,9 @@ description: >-
   Create fair project-specific coding-agent benchmark tasks from historical pull requests and
   validate them with the bundled v1 runner. Use when selecting substantial deterministic changes,
   authoring behavior-focused prompts and hidden evaluators, scaffolding benchmark files, or
-  validating base-fail/reference-pass tasks for Copilot CLI and OpenCode comparisons using
-  GitHub Copilot, OpenAI, OpenCode Zen, OpenCode Go, or Amazon Bedrock authentication.
+  validating base-fail/reference-pass tasks for Copilot CLI, OpenCode, Oh My Pi, and Pi comparisons
+  using GitHub Copilot, OpenAI, OpenAI Codex, OpenCode Zen, OpenCode Go, or Amazon Bedrock
+  authentication.
 ---
 
 # Create a project benchmark

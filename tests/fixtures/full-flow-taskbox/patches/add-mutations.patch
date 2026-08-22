@@ -1,0 +1,106 @@
+diff --git a/README.md b/README.md
+index 0ac9594..6121964 100644
+--- a/README.md
++++ b/README.md
+@@ -4,6 +4,8 @@ Taskbox is a small JSON-backed task list with no external dependencies.
+ 
+ ```bash
+ python3 -m taskbox --store tasks.json add "Write report"
++python3 -m taskbox --store tasks.json complete 1
++python3 -m taskbox --store tasks.json remove 1
+ python3 -m taskbox --store tasks.json list --json
+ ```
+ 
+diff --git a/taskbox/cli.py b/taskbox/cli.py
+index ed6e4f3..a9bced5 100644
+--- a/taskbox/cli.py
++++ b/taskbox/cli.py
+@@ -16,6 +16,12 @@ def parser() -> argparse.ArgumentParser:
+     add = commands.add_parser("add")
+     add.add_argument("title")
+ 
++    complete = commands.add_parser("complete")
++    complete.add_argument("task_id", type=int)
++
++    remove = commands.add_parser("remove")
++    remove.add_argument("task_id", type=int)
++
+     listing = commands.add_parser("list")
+     listing.add_argument("--json", action="store_true")
+     return value
+@@ -28,6 +34,12 @@ def main(argv=None) -> int:
+         if arguments.command == "add":
+             print(json.dumps(store.add(arguments.title)))
+             return 0
++        if arguments.command == "complete":
++            print(json.dumps(store.complete(arguments.task_id)))
++            return 0
++        if arguments.command == "remove":
++            print(json.dumps(store.remove(arguments.task_id)))
++            return 0
+         tasks = store.load()["tasks"]
+         if arguments.json:
+             print(json.dumps(tasks))
+diff --git a/taskbox/store.py b/taskbox/store.py
+index 0f289eb..052a6dd 100644
+--- a/taskbox/store.py
++++ b/taskbox/store.py
+@@ -37,3 +37,28 @@ class Store:
+         state["revision"] += 1
+         self.save(state)
+         return task
++
++    def complete(self, task_id: int) -> dict:
++        state = self.load()
++        task = self._find(state, task_id)
++        if task["completed"]:
++            raise StoreError(f"task {task_id} is already complete")
++        task["completed"] = True
++        state["revision"] += 1
++        self.save(state)
++        return task
++
++    def remove(self, task_id: int) -> dict:
++        state = self.load()
++        task = self._find(state, task_id)
++        state["tasks"].remove(task)
++        state["revision"] += 1
++        self.save(state)
++        return task
++
++    @staticmethod
++    def _find(state: dict, task_id: int) -> dict:
++        for task in state["tasks"]:
++            if task["id"] == task_id:
++                return task
++        raise StoreError(f"task {task_id} does not exist")
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index aee9b86..b77d9ad 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -46,6 +46,25 @@ class TaskboxCliTest(unittest.TestCase):
+         self.assertEqual(result.returncode, 2)
+         self.assertIn("must not be empty", result.stderr)
+ 
++    def test_complete_and_remove_tasks(self):
++        self.run_taskbox("add", "first")
++        self.run_taskbox("add", "second")
++        completed = self.run_taskbox("complete", "1")
++        removed = self.run_taskbox("remove", "2")
++        self.assertEqual(completed.returncode, 0, completed.stderr)
++        self.assertEqual(removed.returncode, 0, removed.stderr)
++
++        listed = self.run_taskbox("list", "--json")
++        self.assertEqual(
++            json.loads(listed.stdout),
++            [{"id": 1, "title": "first", "completed": True}],
++        )
++
++    def test_unknown_task_is_rejected(self):
++        result = self.run_taskbox("complete", "99")
++        self.assertEqual(result.returncode, 2)
++        self.assertIn("does not exist", result.stderr)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

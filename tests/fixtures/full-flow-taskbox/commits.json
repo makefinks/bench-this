@@ -1,0 +1,43 @@
+{
+  "author": {
+    "name": "Taskbox Maintainer",
+    "email": "taskbox@example.invalid"
+  },
+  "commits": [
+    {
+      "id": "create-taskbox",
+      "title": "Create taskbox with add and list commands",
+      "date": "2025-01-06T12:00:00+00:00"
+    },
+    {
+      "id": "add-mutations",
+      "title": "Add complete and remove operations",
+      "date": "2025-02-10T12:00:00+00:00",
+      "patch": "patches/add-mutations.patch"
+    },
+    {
+      "id": "harden-persistence",
+      "title": "Harden task state persistence",
+      "date": "2025-03-17T12:00:00+00:00",
+      "patch": "patches/harden-persistence.patch"
+    },
+    {
+      "id": "transactional-editing",
+      "title": "Add transactional task editing",
+      "date": "2025-05-12T12:00:00+00:00",
+      "patch": "patches/transactional-editing.patch"
+    },
+    {
+      "id": "add-search",
+      "title": "Add task title search",
+      "date": "2025-07-14T12:00:00+00:00",
+      "patch": "patches/add-search.patch"
+    },
+    {
+      "id": "add-summary",
+      "title": "Add task summary reporting",
+      "date": "2025-09-15T12:00:00+00:00",
+      "patch": "patches/add-summary.patch"
+    }
+  ]
+}

@@ -49,6 +49,34 @@ def run_provision(
         env=environment,
     )
 
+def run_pi_provision(
+    repository: Path,
+    home: Path,
+    token: str | None,
+) -> subprocess.CompletedProcess[str]:
+    environment = os.environ.copy()
+    environment["HOME"] = str(home)
+    if token is None:
+        environment.pop("AGENT_BENCH_BEDROCK_API_KEY", None)
+    else:
+        environment["AGENT_BENCH_BEDROCK_API_KEY"] = token
+    return subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            str(repository),
+            "--harness",
+            "pi",
+            "--provider",
+            "amazon-bedrock",
+            "--profile",
+            "bedrock",
+        ],
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+
 
 def test_provisions_bedrock_profile_without_interactive_input(tmp_path: Path) -> None:
     repository = tmp_path / "project"
@@ -72,6 +100,38 @@ def test_provisions_bedrock_profile_without_interactive_input(tmp_path: Path) ->
     }
     assert "fixture-token" not in result.stdout
     assert "fixture-token" not in result.stderr
+
+def test_provisions_pi_bearer_profile_without_interactive_input(tmp_path: Path) -> None:
+    repository = tmp_path / "pi-bearer-project"
+    repository.mkdir()
+    scaffold(repository)
+    home = tmp_path / "pi-bearer-home"
+
+    result = run_pi_provision(repository, home, "fixture-token")
+
+    assert result.returncode == 0, result.stderr
+    credentials = json.loads(
+        (
+            home
+            / ".agent-bench/auth"
+            / "bedrock/pi"
+            / BEDROCK_CREDENTIALS_FILE
+        ).read_text(encoding="utf-8")
+    )
+    assert credentials == {BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"}
+    assert "fixture-token" not in result.stdout
+    assert "fixture-token" not in result.stderr
+
+
+def test_rejects_missing_pi_bedrock_token_without_waiting(tmp_path: Path) -> None:
+    repository = tmp_path / "pi-project"
+    repository.mkdir()
+    scaffold(repository)
+
+    result = run_pi_provision(repository, tmp_path / "pi-home", None)
+
+    assert result.returncode != 0
+    assert "AGENT_BENCH_BEDROCK_API_KEY must be supplied" in result.stderr
 
 
 def test_rejects_missing_bedrock_token_without_waiting(tmp_path: Path) -> None:

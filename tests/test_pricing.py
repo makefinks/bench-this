@@ -187,3 +187,25 @@ def test_native_copilot_uses_github_copilot_estimate(tmp_path):
     runner = BenchmarkRunner(project(tmp_path), pricing=Pricing())
 
     assert runner._estimate(copilot, Usage(input_tokens=1_000_000)) == 1
+
+
+def test_pi_uses_selected_provider_estimate(tmp_path):
+    class Pricing:
+        def price(self, provider, model):
+            assert (provider, model) == ("amazon-bedrock", "model")
+            return ModelPrice(1, 2, 2, 0.1, 0.5)
+
+    pi = HarnessConfig(
+        root=tmp_path,
+        id="pi-model",
+        harness="pi",
+        provider="amazon-bedrock",
+        model="model",
+        harness_config=tmp_path / "harness",
+        workspace_config=tmp_path / "workspace",
+        auth_profile="bedrock",
+        arguments=[],
+    )
+    runner = BenchmarkRunner(project(tmp_path), pricing=Pricing())
+
+    assert runner._estimate(pi, Usage(input_tokens=1_000_000)) == 1

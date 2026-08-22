@@ -1,4 +1,4 @@
-from agent_bench.telemetry import extract_identity, parse_omp_transcript, parse_usage
+from agent_bench.telemetry import extract_identity, parse_pi_transcript, parse_usage
 
 
 def test_copilot_otel_fixture_parses_tokens_and_native_cost():
@@ -48,7 +48,7 @@ def test_omp_camelcase_cache_fields_parse_without_triple_counting():
 {"type":"turn_end","message":{"role":"assistant","usage":{"input":10,"output":4,"reasoningTokens":2,"cacheRead":40,"cacheWrite":6,"totalTokens":60,"cost":{"total":0.01}}}}
 {"type":"agent_end","messages":[{"role":"assistant","usage":{"input":10,"output":4,"reasoningTokens":2,"cacheRead":40,"cacheWrite":6,"totalTokens":60,"cost":{"total":0.01}}}]}
 """
-    usage = parse_omp_transcript(raw)
+    usage = parse_pi_transcript(raw)
     assert usage.input_tokens == 10
     assert usage.output_tokens == 2
     assert usage.reasoning_tokens == 2
@@ -63,7 +63,7 @@ def test_omp_sums_each_requests_cache_buckets():
         '[{"role":"assistant","usage":{"input":5,"output":1,"cacheRead":100,"cacheWrite":10}},'
         '{"role":"assistant","usage":{"input":7,"output":2,"cacheRead":260,"cacheWrite":10}}]}\n'
     )
-    usage = parse_omp_transcript(raw)
+    usage = parse_pi_transcript(raw)
     assert usage.input_tokens == 12
     assert usage.output_tokens == 3
     assert usage.cache_read_tokens == 360
@@ -80,7 +80,7 @@ def test_omp_includes_task_tool_subagent_usage():
         '"totalTokens":38,"cost":{"total":0.02}}}}]}'
     )
 
-    usage = parse_omp_transcript(raw)
+    usage = parse_pi_transcript(raw)
 
     assert usage.input_tokens == 30
     assert usage.output_tokens == 7
@@ -95,7 +95,7 @@ def test_omp_includes_task_usage_when_agent_end_is_missing():
 {"type":"turn_end","message":{"role":"assistant","usage":{"input":10,"output":2,"cacheRead":0,"cacheWrite":0,"cost":{"total":0.01}}},"toolResults":[{"role":"toolResult","toolName":"task","details":{"usage":{"input":20,"output":4,"cacheRead":3,"cacheWrite":1,"totalTokens":28,"cost":{"total":0.02}}}}]}
 """
 
-    usage = parse_omp_transcript(raw)
+    usage = parse_pi_transcript(raw)
 
     assert usage.input_tokens == 30
     assert usage.output_tokens == 6
@@ -113,7 +113,7 @@ def test_omp_counts_subagent_once_when_stream_replays_tool_result():
 {"type":"turn_end","message":{"role":"assistant","usage":{"input":10,"output":2,"cacheRead":0,"cacheWrite":0,"cost":{"total":0.01}}},"toolResults":[{"role":"toolResult","toolCallId":"call_1","toolName":"task","details":{"usage":{"input":20,"output":4,"cacheRead":3,"cacheWrite":1,"totalTokens":28,"cost":{"total":0.02}}}}]}
 """
 
-    usage = parse_omp_transcript(raw)
+    usage = parse_pi_transcript(raw)
 
     assert usage.input_tokens == 30
     assert usage.output_tokens == 6
@@ -126,7 +126,7 @@ def test_omp_uses_message_end_once_when_agent_end_is_missing():
     raw = """{"type":"message_end","message":{"role":"assistant","usage":{"input":10,"output":4,"reasoningTokens":2,"cacheRead":40,"cacheWrite":6,"cost":{"total":0.01}}}}
 {"type":"turn_end","message":{"role":"assistant","usage":{"input":10,"output":4,"reasoningTokens":2,"cacheRead":40,"cacheWrite":6,"cost":{"total":0.01}}}}
 """
-    usage = parse_omp_transcript(raw)
+    usage = parse_pi_transcript(raw)
     assert usage.input_tokens == 10
     assert usage.output_tokens == 2
     assert usage.reasoning_tokens == 2
@@ -137,7 +137,7 @@ def test_omp_uses_message_end_once_when_agent_end_is_missing():
 
 def test_omp_transcript_falls_back_to_generic_parser_without_agent_end():
     raw = '{"type":"step_finish","part":{"tokens":{"input":100,"output":20,"reasoning":5,"cache":{"read":12,"write":3}},"cost":0}}'
-    usage = parse_omp_transcript(raw)
+    usage = parse_pi_transcript(raw)
     assert usage.input_tokens == 100
     assert usage.output_tokens == 20
     assert usage.reasoning_tokens == 5

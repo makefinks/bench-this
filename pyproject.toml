@@ -25,3 +25,4 @@ agent_bench = ["template/**/*"]
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+norecursedirs = ["tests/fixtures"]

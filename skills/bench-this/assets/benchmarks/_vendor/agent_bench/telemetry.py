@@ -168,12 +168,12 @@ def parse_usage(text: str) -> Usage:
     )
 
 
-def parse_omp_transcript(text: str) -> Usage:
-    """Aggregate OMP usage from the authoritative final transcript.
+def parse_pi_transcript(text: str) -> Usage:
+    """Aggregate Pi-family usage from the authoritative final transcript.
 
-    OMP's JSON stream replays every message's usage inside message_end, turn_end,
+    Pi JSON streams replay every message's usage inside message_end, turn_end,
     and the closing agent_end transcript, so only the final transcript is used.
-    Its output bucket includes reasoning, while cacheRead/cacheWrite are separate
+    The output bucket includes reasoning, while cacheRead/cacheWrite are separate
     per-request buckets; normalize these to mutually exclusive runner buckets.
     """
 
@@ -192,7 +192,7 @@ def parse_omp_transcript(text: str) -> Usage:
             if isinstance(tool_results, list):
                 completed_tool_results.extend(tool_results)
     if not messages:
-        # Successful OMP runs can omit agent_end. message_end and turn_end replay
+        # Successful Pi-family runs can omit agent_end. message_end and turn_end replay
         # the same usage, so aggregate exactly one event family. Every toolResult
         # carried by turn_end also gets its own message_end emission (agent-loop
         # emitToolResult), so merge only tool results whose toolCallId was not
@@ -286,8 +286,8 @@ def extract_identities(text: str) -> List[Tuple[Optional[str], str]]:
     return identities
 
 
-def extract_omp_identities(text: str) -> List[Tuple[Optional[str], str]]:
-    """Collect only direct OMP assistant identities, excluding tool-result metadata."""
+def extract_pi_identities(text: str) -> List[Tuple[Optional[str], str]]:
+    """Collect direct Pi-family assistant identities, excluding tool-result metadata."""
 
     identities: List[Tuple[Optional[str], str]] = []
     for event in parse_json_events(text):
@@ -306,13 +306,13 @@ def extract_omp_identities(text: str) -> List[Tuple[Optional[str], str]]:
     return identities
 
 
-def extract_omp_terminal_message(text: str) -> Optional[Dict[str, Any]]:
-    """Return the final assistant message of an OMP transcript.
+def extract_pi_terminal_message(text: str) -> Optional[Dict[str, Any]]:
+    """Return the final assistant message of a Pi-family transcript.
 
-    Deadline-aborted turns exit 0 by design (oh-my-pi#7635) and carry
-    stopReason "aborted" only on this message, so callers use it to reject
-    runs that were cut off before completion. agent_end replays the whole
-    conversation, so its last assistant message wins over streamed events.
+    Deadline-aborted turns may exit 0 and carry stopReason "aborted" only on
+    this message, so callers reject runs cut off before completion. agent_end
+    replays the whole conversation, so its last assistant message wins over
+    streamed events.
     """
 
     terminal = None

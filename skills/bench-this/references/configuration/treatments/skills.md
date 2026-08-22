@@ -13,9 +13,9 @@ python <skill-directory>/scripts/configure.py <repository> \
   --skill /absolute/path/to/ponytail
 ```
 
-The generator copies each skill into `workspace/.agents/skills/<name>`, which both supported
-harnesses discover natively. For OpenCode it also permits the native skill tool. This is only the
-first configuration step: every skill treatment must apply the named skill to every solver task.
+The generator copies each skill into `workspace/.agents/skills/<name>`, which supported harnesses
+discover natively. For OpenCode it also permits the native skill tool. This is only the first
+configuration step: every skill treatment must apply the named skill to every solver task.
 Pin or preserve the exact reviewed skill version outside the benchmark before copying it.
 
 Inspect upstream harness-specific activation instructions before completing the variant. Stage the

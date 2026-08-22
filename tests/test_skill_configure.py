@@ -291,6 +291,56 @@ def test_creates_omp_bedrock_configuration(tmp_path: Path) -> None:
     assert not (root / "harness/opencode.json").exists()
     assert (root / "workspace").is_dir()
 
+def test_creates_pi_codex_configuration(tmp_path: Path) -> None:
+    repository = scaffold(tmp_path)
+    result = run_configure(
+        repository,
+        "--harness",
+        "pi",
+        "--provider",
+        "openai-codex",
+        "--model",
+        "gpt-5.4",
+        "--auth-profile",
+        "codex",
+    )
+
+    assert result.returncode == 0, result.stderr
+    root = repository / "benchmarks/configurations/pi-openai-codex-gpt-5-4"
+    manifest = (root / "configuration.yaml").read_text()
+    assert "harness: pi" in manifest
+    assert "provider: openai-codex" in manifest
+    assert "agent:" not in manifest
+    assert list((root / "harness").iterdir()) == []
+
+
+def test_creates_pi_bedrock_configuration(tmp_path: Path) -> None:
+    repository = scaffold(tmp_path)
+    result = run_configure(
+        repository,
+        "--harness",
+        "pi",
+        "--provider",
+        "amazon-bedrock",
+        "--bedrock-region",
+        "eu-west-1",
+        "--model",
+        "eu.anthropic.claude-sonnet-4-6",
+        "--auth-profile",
+        "bedrock",
+    )
+
+    assert result.returncode == 0, result.stderr
+    root = (
+        repository
+        / "benchmarks/configurations/pi-amazon-bedrock-eu-anthropic-claude-sonnet-4-6"
+    )
+    manifest = (root / "configuration.yaml").read_text()
+    assert "harness: pi" in manifest
+    assert "provider: amazon-bedrock" in manifest
+    assert "region: eu-west-1" in manifest
+    assert list((root / "harness").iterdir()) == []
+
 
 def test_rejects_provider_for_native_copilot(tmp_path: Path) -> None:
     repository = scaffold(tmp_path)

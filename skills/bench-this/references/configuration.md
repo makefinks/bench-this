@@ -21,6 +21,8 @@ page for that combination:
 | Copilot CLI | none                         | [Copilot CLI](configuration/harnesses/copilot-cli/index.md)                                                                              |
 | Oh My Pi    | github-copilot, openai-codex | [Oh My Pi](configuration/harnesses/omp/index.md)                                                                                         |
 | Oh My Pi    | amazon-bedrock               | [Oh My Pi](configuration/harnesses/omp/index.md) and [Amazon Bedrock](configuration/harnesses/omp/providers/amazon-bedrock.md)           |
+| Pi          | openai-codex                 | [Pi](configuration/harnesses/pi/index.md)                                                                                                |
+| Pi          | amazon-bedrock               | [Pi](configuration/harnesses/pi/index.md) and [Amazon Bedrock](configuration/harnesses/pi/providers/amazon-bedrock.md)                   |
 
 ## Treatment and execution references
 

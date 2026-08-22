@@ -29,6 +29,13 @@ HARNESS_INSTALLS = {
             'BUN_INSTALL=/usr/local bun install --global "@oh-my-pi/pi-coding-agent@${OMP_VERSION}"',
         ),
     ),
+    "pi": HarnessInstall(
+        {"PI_VERSION": "0.84.2"},
+        (
+            'npm install --global --ignore-scripts '
+            '"@earendil-works/pi-coding-agent@${PI_VERSION}"',
+        ),
+    ),
     "opencode": HarnessInstall(
         {"OPENCODE_VERSION": "1.17.18"},
         ('npm install --global "opencode-ai@${OPENCODE_VERSION}"',),

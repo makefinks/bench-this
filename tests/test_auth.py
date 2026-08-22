@@ -11,6 +11,7 @@ from agent_bench.workspace import (
     BEDROCK_CREDENTIALS_FILE,
     BEDROCK_TOKEN_ENVIRONMENT_VARIABLE,
     auth_environment,
+    PI_AUTH_FILE,
     stage_home,
     store_bedrock_api_key,
     store_omp_credential,
@@ -215,6 +216,118 @@ def test_omp_oauth_profile_stages_native_database_without_environment_token(tmp_
     assert (home / ".omp/agent/config.yaml").read_text(encoding="utf-8") == "theme: fixture\n"
     assert not (home / ".omp/config.yaml").exists()
 
+
+def pi_config(tmp_path, provider="openai-codex"):
+    root = tmp_path / "pi-configuration"
+    (root / "harness").mkdir(parents=True)
+    (root / "workspace").mkdir()
+    return HarnessConfig(
+        root=root,
+        id=f"pi-{provider}",
+        harness="pi",
+        provider=provider,
+        model="gpt-fixed",
+        region="eu-west-1" if provider == "amazon-bedrock" else None,
+        harness_config=root / "harness",
+        workspace_config=root / "workspace",
+        auth_profile="pi-auth",
+        arguments=[],
+    )
+
+
+def test_pi_codex_oauth_profile_stages_only_native_auth_file(tmp_path):
+    auth_root = tmp_path / "auth"
+    auth = auth_root / "pi-auth" / "pi" / PI_AUTH_FILE
+    auth.parent.mkdir(parents=True)
+    auth.write_text(
+        json.dumps(
+            {
+                "openai-codex": {
+                    "type": "oauth",
+                    "access": "fixture-access",
+                    "refresh": "fixture-refresh",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (auth.parent / "settings.json").write_text('{"theme":"fixture"}', encoding="utf-8")
+    (auth.parent / "models-store.json").write_text("{}", encoding="utf-8")
+    session = auth.parent / "sessions" / "project" / "session.jsonl"
+    session.parent.mkdir(parents=True)
+    session.write_text('{"type":"session"}\n', encoding="utf-8")
+    config = pi_config(tmp_path)
+
+    assert validate_auth_profile(config, auth_root) == auth_root / "pi-auth" / "pi"
+    assert auth_environment(config, auth_root) == {}
+    home = tmp_path / "pi-home"
+    stage_home(config, home, auth_root)
+    assert json.loads((home / PI_AUTH_FILE).read_text(encoding="utf-8")) == {
+        "openai-codex": {
+            "type": "oauth",
+            "access": "fixture-access",
+            "refresh": "fixture-refresh",
+        }
+    }
+    assert not (home / ".pi/agent/settings.json").exists()
+    assert not (home / ".pi/agent/models-store.json").exists()
+    assert not (home / ".pi/agent/sessions").exists()
+
+
+def test_pi_bedrock_bearer_profile_injects_token_without_staging_secret_file(tmp_path):
+    auth_root = tmp_path / "auth"
+    profile = store_bedrock_api_key(
+        "pi-auth",
+        "fixture-token",
+        auth_root,
+        harness="pi",
+    )
+    config = pi_config(tmp_path, "amazon-bedrock")
+
+    assert profile.stat().st_mode & 0o777 == 0o700
+    credentials = profile / BEDROCK_CREDENTIALS_FILE
+    assert credentials.stat().st_mode & 0o777 == 0o600
+    assert validate_auth_profile(config, auth_root) == profile
+    assert auth_environment(config, auth_root) == {
+        BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"
+    }
+
+    home = tmp_path / "pi-bedrock-home"
+    stage_home(config, home, auth_root)
+    assert not (home / BEDROCK_CREDENTIALS_FILE).exists()
+
+    (profile / "unexpected").write_text("fixture", encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="unexpected files"):
+        validate_auth_profile(config, auth_root)
+    (profile / "unexpected").unlink()
+
+    credentials.write_text(json.dumps({"unrelated": "shape"}) + "\n")
+    with pytest.raises(ConfigurationError, match="bearer token"):
+        validate_auth_profile(config, auth_root)
+
+
+def test_pi_bedrock_login_stores_runner_managed_token(tmp_path, monkeypatch):
+    auth_root = tmp_path / "auth"
+    monkeypatch.setattr(
+        "agent_bench.cli.auth_profile_root",
+        lambda profile, harness: auth_root / profile / harness,
+    )
+    monkeypatch.setattr(
+        "agent_bench.workspace.auth_profile_root",
+        lambda profile, harness, auth_root=None: tmp_path / "auth" / profile / harness,
+    )
+    supplied = iter(("fixture-api-key",))
+    monkeypatch.setattr("agent_bench.cli.getpass.getpass", lambda _prompt: next(supplied))
+    project = type("Project", (), {"image": type("Image", (), {"name": "unused"})()})()
+
+    _login(project, "pi", "bedrock", "amazon-bedrock")
+
+    credentials = json.loads(
+        (auth_root / "bedrock" / "pi" / BEDROCK_CREDENTIALS_FILE).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert credentials == {BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-api-key"}
 
 def test_login_rejects_provider_not_supported_by_selected_harness(tmp_path, monkeypatch):
     destination = tmp_path / "auth"

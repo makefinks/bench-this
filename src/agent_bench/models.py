@@ -114,7 +114,7 @@ class HarnessConfig:
     def qualified_model(self) -> str:
         """Return provider-qualified syntax for harnesses that support it."""
 
-        if self.harness in {"opencode", "omp"}:
+        if self.harness in {"opencode", "omp", "pi"}:
             return f"{self.provider}/{self.model}"
         return self.model
 

@@ -152,6 +152,22 @@ The corresponding `harness/opencode.json` must pin the AWS region under
 `provider.amazon-bedrock.options.region`. The external profile supplies
 `AWS_BEARER_TOKEN_BEDROCK`; never put that token in YAML or `opencode.json`.
 
+## Pi configuration
+
+```yaml
+id: pi-codex-model-a
+harness: pi
+provider: openai-codex
+model: model-a
+harness_config: harness
+workspace_config: workspace
+auth_profile: codex
+arguments: []
+```
+
+Pi Amazon Bedrock configurations use `provider: amazon-bedrock` and add the required `region`.
+The external profile holds a Bedrock API key injected as `AWS_BEARER_TOKEN_BEDROCK`.
+
 ## Commands
 
 ```bash
@@ -166,6 +182,7 @@ python <skill-directory>/scripts/scaffold.py .
 ./benchmarks/run.py auth login --harness opencode --provider openai --profile openai
 ./benchmarks/run.py auth login --harness opencode --provider opencode-go --profile opencode-go
 ./benchmarks/run.py auth login --harness opencode --provider opencode --profile opencode-zen
+./benchmarks/run.py auth login --harness pi --provider openai-codex --profile codex
 ./benchmarks/run.py doctor
 ./benchmarks/run.py run --task duplicate-email --configuration copilot-model-a
 ./benchmarks/run.py run --task duplicate-email --task another-task \

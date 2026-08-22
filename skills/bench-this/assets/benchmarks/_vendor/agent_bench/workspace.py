@@ -24,6 +24,7 @@ OMP_PROVIDER_ENVIRONMENT = {
     "openai-codex": "OPENAI_CODEX_OAUTH_TOKEN",
     "amazon-bedrock": "AWS_BEARER_TOKEN_BEDROCK",
 }
+PI_AUTH_FILE = Path(".pi/agent/auth.json")
 
 
 def _reject_symlinks(root: Path, label: str) -> None:
@@ -172,12 +173,16 @@ def store_bedrock_api_key(
     profile_name: str,
     token: str,
     auth_root: Optional[Path] = None,
+    *,
+    harness: str = "opencode",
 ) -> Path:
     """Atomically replace one runner-owned Bedrock bearer-token profile."""
 
     if not token or token.isspace() or "\n" in token or "\r" in token:
         raise ConfigurationError("Amazon Bedrock API key must be one non-empty line")
-    profile = auth_profile_root(profile_name, "opencode", auth_root)
+    if harness not in {"opencode", "pi"}:
+        raise ConfigurationError(f"unsupported Bedrock API-key harness: {harness}")
+    profile = auth_profile_root(profile_name, harness, auth_root)
     if profile.exists():
         _reject_symlinks(profile, "auth_profile")
         files = sorted(
@@ -249,6 +254,35 @@ def store_omp_credential(
             temporary.unlink(missing_ok=True)
     return profile
 
+def _validated_bedrock_token(profile: Path) -> str:
+    """Read and validate one runner-owned Bedrock bearer-token credential file."""
+
+    try:
+        credentials = json.loads(
+            (profile / BEDROCK_CREDENTIALS_FILE).read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ConfigurationError(
+            f"invalid Amazon Bedrock credential file: {profile / BEDROCK_CREDENTIALS_FILE}"
+        ) from exc
+    token = (
+        credentials.get(BEDROCK_TOKEN_ENVIRONMENT_VARIABLE)
+        if isinstance(credentials, dict)
+        and set(credentials) == {BEDROCK_TOKEN_ENVIRONMENT_VARIABLE}
+        else None
+    )
+    if (
+        not isinstance(token, str)
+        or not token
+        or token.isspace()
+        or "\n" in token
+        or "\r" in token
+    ):
+        raise ConfigurationError(
+            "Amazon Bedrock auth profile must contain one valid bearer token"
+        )
+    return token
+
 
 def validate_auth_profile(config: HarnessConfig, auth_root: Optional[Path] = None) -> Path:
     """Reject missing, linked, or broadened credential profiles before a run."""
@@ -259,7 +293,10 @@ def validate_auth_profile(config: HarnessConfig, auth_root: Optional[Path] = Non
             f"authentication profile not found: {profile}; run `agent-bench auth login` first"
         )
     _reject_symlinks(profile, "auth_profile")
-    if config.harness == "opencode" and config.provider == AMAZON_BEDROCK_PROVIDER:
+    if (
+        config.harness in {"opencode", "pi"}
+        and config.provider == AMAZON_BEDROCK_PROVIDER
+    ):
         files = sorted(
             path.relative_to(profile) for path in profile.rglob("*") if path.is_file()
         )
@@ -268,30 +305,27 @@ def validate_auth_profile(config: HarnessConfig, auth_root: Optional[Path] = Non
                 f"Amazon Bedrock auth profile contains unexpected files: {profile}; "
                 "run auth login again"
             )
-        try:
-            credentials = json.loads(
-                (profile / BEDROCK_CREDENTIALS_FILE).read_text(encoding="utf-8")
-            )
-        except (OSError, json.JSONDecodeError) as exc:
+        _validated_bedrock_token(profile)
+        return profile
+    if config.harness == "pi":
+        files = sorted(path.relative_to(profile) for path in profile.rglob("*") if path.is_file())
+        if PI_AUTH_FILE not in files:
             raise ConfigurationError(
-                f"invalid Amazon Bedrock credential file: "
-                f"{profile / BEDROCK_CREDENTIALS_FILE}"
-            ) from exc
-        token = (
-            credentials.get(BEDROCK_TOKEN_ENVIRONMENT_VARIABLE)
-            if isinstance(credentials, dict)
-            and set(credentials) == {BEDROCK_TOKEN_ENVIRONMENT_VARIABLE}
-            else None
-        )
+                f"Pi OAuth profile is missing {PI_AUTH_FILE}: {profile}; run auth login again"
+            )
+        try:
+            credentials = json.loads((profile / PI_AUTH_FILE).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ConfigurationError(f"invalid Pi credential file: {profile / PI_AUTH_FILE}") from exc
+        credential = credentials.get(config.provider) if isinstance(credentials, dict) else None
         if (
-            not isinstance(token, str)
-            or not token
-            or token.isspace()
-            or "\n" in token
-            or "\r" in token
+            not isinstance(credentials, dict)
+            or set(credentials) != {config.provider}
+            or not isinstance(credential, dict)
+            or credential.get("type") != "oauth"
         ):
             raise ConfigurationError(
-                "Amazon Bedrock auth profile must contain one valid bearer token"
+                f"Pi auth profile must contain only OAuth provider {config.provider!r}"
             )
         return profile
     if config.harness == "opencode":
@@ -353,17 +387,13 @@ def auth_environment(
         profile = validate_auth_profile(config, auth_root)
         credentials = json.loads((profile / OMP_CREDENTIALS_FILE).read_text(encoding="utf-8"))
         return credentials
-    if config.harness != "opencode" or config.provider != AMAZON_BEDROCK_PROVIDER:
+    if (
+        config.harness not in {"opencode", "pi"}
+        or config.provider != AMAZON_BEDROCK_PROVIDER
+    ):
         return {}
     profile = validate_auth_profile(config, auth_root)
-    credentials = json.loads(
-        (profile / BEDROCK_CREDENTIALS_FILE).read_text(encoding="utf-8")
-    )
-    return {
-        BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: credentials[
-            BEDROCK_TOKEN_ENVIRONMENT_VARIABLE
-        ]
-    }
+    return {BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: _validated_bedrock_token(profile)}
 
 
 def stage_home(
@@ -379,12 +409,23 @@ def stage_home(
     if require_auth:
         validate_auth_profile(config, auth_root)
     # Bearer-token profiles are injected as environment variables, not mounted into HOME.
+    pi_oauth = config.harness == "pi" and config.provider != AMAZON_BEDROCK_PROVIDER
+    bedrock_bearer = (
+        config.harness in {"opencode", "omp", "pi"}
+        and config.provider == AMAZON_BEDROCK_PROVIDER
+    )
     if (
         profile.exists()
-        and not (config.harness == "opencode" and config.provider == AMAZON_BEDROCK_PROVIDER)
-        and not (config.harness == "omp" and config.provider == AMAZON_BEDROCK_PROVIDER)
+        and not bedrock_bearer
+        and not pi_oauth
     ):
         copy_contents(profile, destination, "auth_profile")
+    elif profile.exists() and pi_oauth:
+        # Interactive Pi login creates settings, catalogs, and sessions beside auth.json.
+        # Stage only the selected credential file into the disposable harness home.
+        auth_target = destination / PI_AUTH_FILE
+        auth_target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(profile / PI_AUTH_FILE, auth_target)
 
     # Harness configuration overlays copied auth state so an auth profile cannot
     # silently replace the experiment's selected settings.
@@ -392,6 +433,8 @@ def stage_home(
         config_target = destination / ".copilot"
     elif config.harness == "omp":
         config_target = destination / ".omp" / "agent"
+    elif config.harness == "pi":
+        config_target = destination / ".pi" / "agent"
     else:
         config_target = destination / ".config" / "opencode"
     copy_contents(config.harness_config, config_target, "harness_config")
