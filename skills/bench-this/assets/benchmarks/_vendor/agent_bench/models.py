@@ -4,6 +4,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from .catalog import (
+    HARNESS_CATALOG,
+    AuthPolicy,
+    HarnessSpec,
+    ModelReferenceForm,
+    ProviderSpec,
+)
+
 
 @dataclass(frozen=True)
 class ImageConfig:
@@ -95,8 +103,8 @@ class TaskConfig:
 
 
 @dataclass(frozen=True)
-class HarnessConfig:
-    """One experimental treatment: harness, model, instructions, and auth profile."""
+class TreatmentConfig:
+    """One selected treatment resolved against the static support catalog."""
 
     root: Path
     id: str
@@ -109,12 +117,31 @@ class HarnessConfig:
     provider: Optional[str] = None
     agent: Optional[str] = None
     region: Optional[str] = None
+    github_copilot_business: bool = False
+
+    @property
+    def harness_spec(self) -> HarnessSpec:
+        """Return the catalog definition selected by this treatment."""
+
+        return HARNESS_CATALOG[self.harness]
+
+    @property
+    def provider_spec(self) -> ProviderSpec:
+        """Return the harness-scoped provider definition without fallback."""
+
+        return self.harness_spec.provider(self.provider)
+
+    @property
+    def auth_policy(self) -> AuthPolicy:
+        """Expose the complete authentication lifecycle selected by the catalog."""
+
+        return self.provider_spec.auth_policy
 
     @property
     def qualified_model(self) -> str:
-        """Return provider-qualified syntax for harnesses that support it."""
+        """Render the selected model through the harness catalog policy."""
 
-        if self.harness in {"opencode", "omp", "pi"}:
+        if self.harness_spec.model_reference is ModelReferenceForm.QUALIFIED:
             return f"{self.provider}/{self.model}"
         return self.model
 

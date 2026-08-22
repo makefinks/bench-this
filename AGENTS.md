@@ -49,12 +49,11 @@ another repository, read and follow
 under `skills/bench-this/assets/benchmarks/_vendor/agent_bench/` is the
 vendored distribution copy used by generated target repositories.
 
-When changing runner behavior, modify and test `src/agent_bench/` first. Do not
-independently edit both copies, and do not run `scripts/sync_vendored_runner.py` yourself.
-When handed work back, tell the user the runner source and the vendored copy have
-diverged and that the sync script must be run manually; the pre-commit hook verifies
-they are back in sync. Skill-only changes, such as `SKILL.md`, references, or scaffold
-assets, do not require changes to `src/agent_bench/`.
+When changing runner behavior, modify and test `src/agent_bench/` first. Then run
+`scripts/sync_vendored_runner.py` to update the distribution copy; never edit both copies
+independently. Run the script's check mode before E2E verification. The pre-commit hook enforces
+byte-for-byte agreement. Skill-only changes, such as `SKILL.md`, references, or scaffold assets, do
+not require changes to `src/agent_bench/`.
 
 Generated repositories execute their own `benchmarks/_vendor/agent_bench/` copy and do
 not use this repository's `src/` directory.

@@ -99,7 +99,7 @@ harness: opencode
 provider: openai
 model: gpt-5.6-luna
 qualified model: openai/gpt-5.6-luna
-reasoning variant: max
+reasoning variant: high
 authentication: Codex OAuth
 ```
 
@@ -133,8 +133,8 @@ log_dir=$(mktemp -d "${TMPDIR:-/tmp}/benchmark-skill-e2e-logs.XXXXXX")
 python3 "$bench_this_dir/scripts/sync_vendored_runner.py" --check
 ```
 
-If the check reports drift, stop and tell the developer to run the sync command manually. Do not run
-it for them. Once the check passes, create the retained target:
+If the check reports drift after canonical validation, run the synchronization command and repeat
+check mode. Create the retained target only after check mode passes:
 
 ```bash
 python3 "$bench_this_dir/scripts/create_full_flow_fixture.py"
@@ -183,8 +183,9 @@ separately.
 ### Background checkpoint loop
 
 When the execution environment supports background tasks, submit each `opencode run` command below
-as one background task. Keep the returned task handle and leave the OpenCode process attached to
-that task. Use a foreground run only when background execution is unavailable.
+as one background task with a pseudo-terminal. OpenCode may remain at `init` without a terminal even
+when stdout and stderr are redirected. Keep the returned task handle and leave the OpenCode process
+attached to that task. Use a foreground terminal only when background execution is unavailable.
 
 After launching the task, run this wait as a separate Bash call. The interval depends on the target:
 `sleep 30` for the internal full-flow fixture, `sleep 120` for an external target:
@@ -220,7 +221,7 @@ orchestrator_model="openai/gpt-5.6-luna"
   cd "$repository_dir"
   env -u OPENAI_API_KEY opencode run \
     --model "$orchestrator_model" \
-    --variant max \
+    --variant high \
     --agent build \
     --format json \
     --print-logs \
@@ -240,7 +241,7 @@ same session:
   env -u OPENAI_API_KEY opencode run \
     --session <orchestrator-session-id> \
     --model "$orchestrator_model" \
-    --variant max \
+    --variant high \
     --agent build \
     --format json \
     --print-logs \
@@ -259,7 +260,7 @@ After the orchestrator reports task creation and validation, resume once more:
   env -u OPENAI_API_KEY opencode run \
     --session <orchestrator-session-id> \
     --model "$orchestrator_model" \
-    --variant max \
+    --variant high \
     --agent build \
     --format json \
     --print-logs \
@@ -278,7 +279,7 @@ When treatment execution is authorized, resume the same session after configurat
   env -u OPENAI_API_KEY opencode run \
     --session <orchestrator-session-id> \
     --model "$orchestrator_model" \
-    --variant max \
+    --variant high \
     --agent build \
     --format json \
     --print-logs \
@@ -290,7 +291,7 @@ When treatment execution is authorized, resume the same session after configurat
 ```
 
 For an explicitly requested non-OpenAI orchestrator, replace `orchestrator_model` and omit
-`env -u OPENAI_API_KEY`. Remove `--variant max` unless the selected mode supports and requests that
+`env -u OPENAI_API_KEY`. Remove `--variant high` unless the selected mode supports and requests that
 variant. Use `opencode-go/glm-5.2` for an explicitly requested OpenCode Go orchestrator.
 
 The OpenCode run is complete when all required prompts finish in the same recorded session and all

@@ -1,9 +1,0 @@
-id: opencode-example
-harness: opencode
-provider: github-copilot
-model: replace-with-pinned-model
-agent: build
-harness_config: harness
-workspace_config: workspace
-auth_profile: copilot
-arguments: []

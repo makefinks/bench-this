@@ -1,9 +1,0 @@
-id: opencode-go-example
-harness: opencode
-provider: opencode-go
-model: glm-5.2
-agent: build
-harness_config: harness
-workspace_config: workspace
-auth_profile: opencode-go
-arguments: []

@@ -21,8 +21,7 @@ For OpenCode, the generated configuration pins the provider-qualified model, pin
 the same model, disables sharing, and leaves the treatment workspace empty. The command refuses to
 overwrite an existing configuration.
 
-The scaffold includes a ready-to-copy OpenCode Go example using `opencode-go/glm-5.2`. Generate it
-as an active configuration with:
+OpenCode Go is also supported. Generate an active configuration with:
 
 ```bash
 python <skill-directory>/scripts/configure.py <repository> \
@@ -77,13 +76,12 @@ After a newly completed login, verify only the matching profile and harness:
 ./benchmarks/run.py auth verify --harness opencode --profile openai
 ```
 
-Reject an authentication or subscription combination that cannot explicitly select the configured
-pinned model. Do not replace the model with `auto`; a provider-selected model would make the
-treatment non-reproducible.
+Reject an authentication or subscription combination that cannot select the configured model.
+OpenCode with GitHub Copilot may use `auto`; every other OpenCode provider requires a pinned model.
 
 ## Optional native integrations
 
 For an MCP treatment, apply the shared [MCP treatment policy](../../treatments/mcp.md) and then the
 [OpenCode MCP configuration](mcp.md).
 
-When running the OpenCode Go example, use `--provider opencode-go` and `--profile opencode-go`.
+For OpenCode Go, use `--provider opencode-go` and `--profile opencode-go`.

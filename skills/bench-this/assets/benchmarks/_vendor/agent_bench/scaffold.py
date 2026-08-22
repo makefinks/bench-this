@@ -66,10 +66,6 @@ def scaffold(project_root: Path) -> Path:
     shutil.copytree(template, destination, dirs_exist_ok=True)
     _set_image_name(destination, project_root)
     for relative in (
-        "configurations/copilot-example/harness",
-        "configurations/copilot-example/workspace",
-        "configurations/opencode-example/workspace",
-        "configurations/opencode-openai-example/workspace",
         "tasks/example/public",
         "tasks/example/public-tests",
     ):

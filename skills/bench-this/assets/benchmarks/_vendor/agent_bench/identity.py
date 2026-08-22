@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 
-from .models import HarnessConfig, ProjectConfig, TaskConfig
+from .models import TreatmentConfig, ProjectConfig, TaskConfig
 
 
 def _frame(digest: "hashlib._Hash", label: str, payload: bytes) -> None:
@@ -71,7 +71,7 @@ def task_digest(task: TaskConfig) -> str:
     )
 
 
-def configuration_digest(config: HarnessConfig) -> str:
+def configuration_digest(config: TreatmentConfig) -> str:
     """Identify the complete effective treatment without hashing credential contents."""
 
     return _digest(
@@ -82,6 +82,7 @@ def configuration_digest(config: HarnessConfig) -> str:
             "model": config.model,
             "agent": config.agent,
             "region": config.region,
+            "github_copilot_business": config.github_copilot_business,
             "auth_profile": config.auth_profile,
             "arguments": config.arguments,
         },

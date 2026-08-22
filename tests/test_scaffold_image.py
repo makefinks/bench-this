@@ -34,3 +34,14 @@ def test_scaffold_preserves_pyyaml_license_and_provenance(tmp_path: Path) -> Non
     assert f"PyYAML {yaml.__version__}" in notice
     assert "https://github.com/yaml/pyyaml" in notice
     assert "`yaml/LICENSE`" in notice
+
+
+def test_scaffold_has_empty_generator_owned_configuration_root(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+
+    benchmark = scaffold(project)
+
+    configurations = benchmark / "configurations"
+    assert configurations.is_dir()
+    assert [path.name for path in configurations.iterdir()] == [".gitkeep"]

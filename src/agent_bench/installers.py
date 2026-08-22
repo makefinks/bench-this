@@ -1,60 +1,38 @@
 """Render the allowlisted harness tools required by a benchmark matrix."""
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping
+from typing import Iterable
+
+from .catalog import HARNESS_CATALOG
 
 
 HARNESS_START = "# BEGIN GENERATED HARNESS INSTALLS"
 HARNESS_END = "# END GENERATED HARNESS INSTALLS"
 
 
-@dataclass(frozen=True)
-class HarnessInstall:
-    """Pinned image arguments and shell commands for one harness executable."""
-
-    arguments: Mapping[str, str]
-    commands: tuple[str, ...]
-
-
-HARNESS_INSTALLS = {
-    "copilot": HarnessInstall(
-        {"COPILOT_CLI_VERSION": "1.0.73"},
-        ('npm install --global "@github/copilot@${COPILOT_CLI_VERSION}"',),
-    ),
-    "omp": HarnessInstall(
-        {"BUN_VERSION": "1.3.14", "OMP_VERSION": "17.2.9"},
-        (
-            'npm install --global "bun@${BUN_VERSION}"',
-            'BUN_INSTALL=/usr/local bun install --global "@oh-my-pi/pi-coding-agent@${OMP_VERSION}"',
-        ),
-    ),
-    "pi": HarnessInstall(
-        {"PI_VERSION": "0.84.2"},
-        (
-            'npm install --global --ignore-scripts '
-            '"@earendil-works/pi-coding-agent@${PI_VERSION}"',
-        ),
-    ),
-    "opencode": HarnessInstall(
-        {"OPENCODE_VERSION": "1.17.18"},
-        ('npm install --global "opencode-ai@${OPENCODE_VERSION}"',),
-    ),
-}
 
 
 def render_harness_installs(harnesses: Iterable[str]) -> str:
     """Render only known harness installers in deterministic order."""
 
     selected = sorted(set(harnesses))
-    unknown = [harness for harness in selected if harness not in HARNESS_INSTALLS]
+    arguments = {}
+
+    unknown = [harness for harness in selected if harness not in HARNESS_CATALOG]
     if unknown:
         raise ValueError("unsupported harness installers: " + ", ".join(unknown))
     arguments = {}
     commands = []
     for harness in selected:
-        install = HARNESS_INSTALLS[harness]
-        arguments.update(install.arguments)
+        install = HARNESS_CATALOG[harness].installer
+        for name, value in install.arguments.items():
+            previous = arguments.get(name)
+            if previous is not None and previous != value:
+                raise ValueError(
+                    f"conflicting generated build argument {name}: "
+                    f"{previous!r} != {value!r}"
+                )
+            arguments[name] = value
         commands.extend(install.commands)
     lines = [HARNESS_START]
     lines.extend(f"ARG {name}={value}" for name, value in sorted(arguments.items()))

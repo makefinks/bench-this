@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_bench.config import load_harness, load_project, load_task
+from agent_bench.config import load_configuration, load_project, load_task
 from agent_bench.cli import _parser
 from agent_bench.errors import ConfigurationError
 
@@ -11,6 +11,21 @@ def write(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
     return path
+
+
+def treatment_manifest(tmp_path: Path, config_id: str, selection: str) -> Path:
+    root = tmp_path / config_id
+    (root / "harness").mkdir(parents=True)
+    (root / "workspace").mkdir()
+    return write(
+        root / "configuration.yaml",
+        f"""id: {config_id}
+{selection}
+harness_config: harness
+workspace_config: workspace
+auth_profile: work
+""",
+    )
 
 
 def project(tmp_path: Path):
@@ -270,7 +285,7 @@ auth_profile: work
 """,
     )
     with pytest.raises(ConfigurationError, match="provider must be one of"):
-        load_harness(path)
+        load_configuration(path)
 
 
 def test_schema_accepts_openai_opencode_provider(tmp_path):
@@ -289,7 +304,7 @@ workspace_config: workspace
 auth_profile: openai
 """,
     )
-    assert load_harness(path).provider == "openai"
+    assert load_configuration(path).provider == "openai"
 
 
 def test_schema_accepts_opencode_go_provider(tmp_path):
@@ -308,7 +323,7 @@ workspace_config: workspace
 auth_profile: opencode-go
 """,
     )
-    config = load_harness(path)
+    config = load_configuration(path)
 
     assert config.provider == "opencode-go"
     assert config.qualified_model == "opencode-go/glm-5.2"
@@ -331,7 +346,7 @@ workspace_config: workspace
 auth_profile: opencode-zen
 """,
     )
-    config = load_harness(path)
+    config = load_configuration(path)
 
     assert config.provider == "opencode"
     assert config.qualified_model == "opencode/deepseek-v4-flash-free"
@@ -354,7 +369,7 @@ workspace_config: workspace
 auth_profile: bedrock
 """,
     )
-    config = load_harness(path)
+    config = load_configuration(path)
 
     assert config.provider == "amazon-bedrock"
     assert config.region == "eu-central-1"
@@ -384,8 +399,8 @@ auth_profile: bedrock
 """,
     )
 
-    with pytest.raises(ConfigurationError, match="require a valid region"):
-        load_harness(path)
+    with pytest.raises(ConfigurationError, match="region"):
+        load_configuration(path)
 
 def test_schema_accepts_pi_codex_provider(tmp_path):
     root = tmp_path / "pi-codex"
@@ -403,7 +418,7 @@ auth_profile: codex
 """,
     )
 
-    config = load_harness(path)
+    config = load_configuration(path)
 
     assert config.provider == "openai-codex"
     assert config.qualified_model == "openai-codex/gpt-5.4"
@@ -427,7 +442,7 @@ auth_profile: work
     )
 
     with pytest.raises(ConfigurationError, match="pi provider must be one of"):
-        load_harness(path)
+        load_configuration(path)
 
 
 def test_schema_rejects_path_escape(tmp_path):
@@ -442,7 +457,7 @@ auth_profile: work
 """,
     )
     with pytest.raises(ConfigurationError, match="stay inside"):
-        load_harness(path)
+        load_configuration(path)
 
 
 def test_setup_timeout_is_explicit_or_falls_back_to_evaluator(tmp_path):
@@ -470,3 +485,111 @@ def test_run_jobs_default_and_override():
 def test_validate_tasks_jobs_default_and_override():
     assert _parser().parse_args(["validate-tasks"]).jobs == 3
     assert _parser().parse_args(["validate-tasks", "--jobs", "5"]).jobs == 5
+
+
+def test_treatment_schema_rejects_unknown_fields(tmp_path):
+    path = treatment_manifest(
+        tmp_path,
+        "unknown-field",
+        """harness: pi
+provider: openai-codex
+model: gpt-fixed
+modle: typo""",
+    )
+
+    with pytest.raises(ConfigurationError, match="unknown configuration fields: modle"):
+        load_configuration(path)
+
+
+def test_treatment_schema_reports_non_string_keys_as_unknown_fields(tmp_path):
+    path = treatment_manifest(
+        tmp_path,
+        "non-string-key",
+        """harness: pi
+provider: openai-codex
+model: gpt-fixed
+42: typo""",
+    )
+
+    with pytest.raises(ConfigurationError, match="unknown configuration fields: 42"):
+        load_configuration(path)
+
+
+def test_treatment_schema_rejects_known_irrelevant_fields(tmp_path):
+    path = treatment_manifest(
+        tmp_path,
+        "irrelevant-region",
+        """harness: pi
+provider: openai-codex
+model: gpt-fixed
+region: us-east-1""",
+    )
+
+    with pytest.raises(ConfigurationError, match="fields do not apply.*region"):
+        load_configuration(path)
+
+
+def test_treatment_schema_requires_and_forbids_provider_selection(tmp_path):
+    missing = treatment_manifest(
+        tmp_path,
+        "missing-provider",
+        """harness: pi
+model: gpt-fixed""",
+    )
+    forbidden = treatment_manifest(
+        tmp_path,
+        "forbidden-provider",
+        """harness: copilot
+provider: github-copilot
+model: auto""",
+    )
+
+    with pytest.raises(ConfigurationError, match="Pi requires provider"):
+        load_configuration(missing)
+    with pytest.raises(ConfigurationError, match="provider does not apply"):
+        load_configuration(forbidden)
+
+
+@pytest.mark.parametrize(
+    ("config_id", "selection"),
+    [
+        (
+            "copilot-auto",
+            """harness: copilot
+model: auto""",
+        ),
+        (
+            "opencode-copilot-auto",
+            """harness: opencode
+provider: github-copilot
+model: auto
+agent: build""",
+        ),
+        (
+            "omp-copilot-auto",
+            """harness: omp
+provider: github-copilot
+model: auto""",
+        ),
+    ],
+)
+def test_treatment_schema_allows_auto_only_for_copilot_selections(
+    tmp_path, config_id, selection
+):
+    assert load_configuration(
+        treatment_manifest(tmp_path, config_id, selection)
+    ).model == "auto"
+
+
+def test_treatment_schema_rejects_auto_for_non_copilot_provider(tmp_path):
+    path = treatment_manifest(
+        tmp_path,
+        "openai-auto",
+        """harness: opencode
+provider: openai
+model: auto
+agent: build""",
+    )
+
+    with pytest.raises(ConfigurationError, match="explicitly pinned"):
+        load_configuration(path)

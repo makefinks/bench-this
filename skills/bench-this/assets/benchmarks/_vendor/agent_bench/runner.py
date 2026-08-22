@@ -14,7 +14,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
-from .config import discover_harnesses, discover_tasks
+from .auth import PreparedAuth, prepare_home
+
+from .config import discover_configurations, discover_tasks
 from .docker import DockerEngine, Mount, diagnose_output
 from .errors import BenchmarkError, CommandTimeout, InfrastructureError
 from .evaluator import EvaluatorReport, parse_evaluator_report, validate_evaluator_exit
@@ -22,10 +24,10 @@ from .harnesses import PREFLIGHT_PROMPT, adapter_for
 from .identity import configuration_digest, task_digest, validation_environment_digest
 from .installers import render_dockerfile
 from .models import (
-    HarnessConfig,
     ProjectConfig,
     RunResult,
     TaskConfig,
+    TreatmentConfig,
     Usage,
     ValidationPhase,
     ValidationReceipt,
@@ -33,15 +35,12 @@ from .models import (
 from .pricing import ModelsDevPricing
 from .report import append_result, write_summary
 from .workspace import (
-    auth_environment,
     export_commit,
     prepare_evaluator_workspace,
     prepare_workspace,
     public_test_mutations,
     public_test_snapshot,
     stage_public_tests,
-    stage_home,
-    validate_auth_profile,
 )
 
 
@@ -104,14 +103,14 @@ class BenchmarkRunner:
         configuration_files = list((self.project.benchmark_dir / "configurations").glob("*/configuration.yaml"))
         harnesses = set()
         if configuration_files:
-            harnesses = {config.harness for config in discover_harnesses(self.project).values()}
+            harnesses = {config.harness for config in discover_configurations(self.project).values()}
         rendered = render_dockerfile(self.project.image.dockerfile, harnesses)
         with tempfile.NamedTemporaryFile("w", suffix=".Dockerfile", encoding="utf-8") as handle:
             handle.write(rendered)
             handle.flush()
             self.docker.build(self.project.image.name, Path(handle.name), self.project.benchmark_dir)
 
-    def verify_auth(self, config: HarnessConfig) -> Path:
+    def verify_auth(self, config: TreatmentConfig) -> Path:
         """Verify one profile/model pairing without exposing project source."""
 
         log_dir = (
@@ -123,9 +122,10 @@ class BenchmarkRunner:
         )
         log_dir.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="agent-bench-auth-") as temp:
-            home = Path(temp) / "home"
-            stage_home(config, home, self.auth_root)
-            self._preflight(config, home, log_dir)
+            prepared = prepare_home(
+                config, Path(temp) / "home", self.auth_root
+            )
+            self._preflight(config, prepared, log_dir)
         return log_dir
 
     def doctor(self) -> List[Tuple[str, bool, str]]:
@@ -152,7 +152,7 @@ class BenchmarkRunner:
 
         try:
             tasks = discover_tasks(self.project)
-            configs = discover_harnesses(self.project)
+            configs = discover_configurations(self.project)
             checks.append(
                 ("configuration", True, f"{len(tasks)} task(s), {len(configs)} treatment(s)")
             )
@@ -161,21 +161,40 @@ class BenchmarkRunner:
             return checks
 
         for config in configs.values():
-            try:
-                validate_auth_profile(config, self.auth_root)
-                checks.append(
-                    (f"auth:{config.id}", True, f"clean profile {config.auth_profile!r}")
-                )
-            except BenchmarkError as exc:
-                checks.append((f"auth:{config.id}", False, str(exc)))
-                continue
-            try:
-                log_dir = self.verify_auth(config)
-                checks.append(
-                    (f"identity:{config.id}", True, f"{config.qualified_model}; logs: {log_dir}")
-                )
-            except BenchmarkError as exc:
-                checks.append((f"identity:{config.id}", False, str(exc)))
+            log_dir = (
+                self.project.benchmark_dir
+                / "results"
+                / "auth"
+                / config.id
+                / _unique_id("doctor")
+            )
+            log_dir.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix="agent-bench-auth-") as temp:
+                try:
+                    prepared = prepare_home(
+                        config, Path(temp) / "home", self.auth_root
+                    )
+                    checks.append(
+                        (
+                            f"auth:{config.id}",
+                            True,
+                            f"clean profile {config.auth_profile!r}",
+                        )
+                    )
+                except BenchmarkError as exc:
+                    checks.append((f"auth:{config.id}", False, str(exc)))
+                    continue
+                try:
+                    self._preflight(config, prepared, log_dir)
+                    checks.append(
+                        (
+                            f"identity:{config.id}",
+                            True,
+                            f"{config.qualified_model}; logs: {log_dir}",
+                        )
+                    )
+                except BenchmarkError as exc:
+                    checks.append((f"identity:{config.id}", False, str(exc)))
         return checks
 
     def _setup(
@@ -207,8 +226,8 @@ class BenchmarkRunner:
 
     def _preflight(
         self,
-        config: HarnessConfig,
-        home: Path,
+        config: TreatmentConfig,
+        prepared: PreparedAuth,
         log_dir: Path,
         stream_output: bool = True,
     ) -> None:
@@ -221,20 +240,24 @@ class BenchmarkRunner:
             result = self.docker.run(
                 self.project.image.name,
                 adapter.preflight_command(),
-                [Mount(Path(empty), "/workspace"), Mount(home, "/home/bench")],
+                [
+                    Mount(Path(empty), "/workspace"),
+                    Mount(prepared.home, "/home/bench"),
+                ],
                 adapter.environment(),
                 preflight_timeout,
                 network="bridge",
                 stdout_path=log_dir / "preflight.stdout.jsonl",
                 stderr_path=log_dir / "preflight.stderr.log",
                 stream_output=stream_output,
-                secret_environment=auth_environment(config, self.auth_root),
+                secret_environment=prepared.secret_environment,
             )
         if result.returncode:
             diagnosis = diagnose_output(result.stdout, result.stderr)
             detail = f"; {diagnosis}" if diagnosis else ""
             raise InfrastructureError(
-                f"credential/model preflight failed with exit {result.returncode}{detail}; logs: {log_dir}"
+                f"credential/model preflight failed with exit {result.returncode}{detail}; "
+                f"logs: {log_dir}"
             )
         try:
             adapter.verify_preflight(result.stdout, result.stderr)
@@ -328,7 +351,7 @@ class BenchmarkRunner:
             return phase
         return "infrastructure"
 
-    def _estimate(self, config: HarnessConfig, usage: Usage) -> Optional[float]:
+    def _estimate(self, config: TreatmentConfig, usage: Usage) -> Optional[float]:
         """Estimate API-equivalent list-price cost alongside any provider-reported cost.
 
         Computed even when native_cost_usd exists so summaries expose
@@ -336,9 +359,10 @@ class BenchmarkRunner:
         """
 
         price = self.project.prices.get(config.model)
-        provider = config.provider if config.harness in {"opencode", "omp"} else "github-copilot"
         if price is None:
-            price = self.pricing.price(provider, config.model)
+            price = self.pricing.price(
+                config.provider_spec.pricing_provider, config.model
+            )
         if price is None:
             return None
         return (
@@ -352,7 +376,7 @@ class BenchmarkRunner:
     def run_one(
         self,
         task: TaskConfig,
-        config: HarnessConfig,
+        config: TreatmentConfig,
         repetition: int,
         experiment_id: Optional[str] = None,
         stream_output: bool = True,
@@ -381,16 +405,20 @@ class BenchmarkRunner:
         try:
             with tempfile.TemporaryDirectory(prefix="agent-bench-run-") as temp:
                 temp_root = Path(temp)
-                home = temp_root / "home"
                 workspace = temp_root / "workspace"
                 evaluator_workspace = temp_root / "evaluator-workspace"
-                stage_home(config, home, self.auth_root)
+                prepared = prepare_home(
+                    config, temp_root / "home", self.auth_root
+                )
+                home = prepared.home
 
                 # This must complete before any source directory is mounted in a model container.
                 phase = "preflight"
                 phase_started = time.monotonic()
                 try:
-                    self._preflight(config, home, log_dir, stream_output=stream_output)
+                    self._preflight(
+                        config, prepared, log_dir, stream_output=stream_output
+                    )
                 finally:
                     phase_durations["preflight"] = time.monotonic() - phase_started
                 phase_started = time.monotonic()
@@ -432,7 +460,7 @@ class BenchmarkRunner:
                         stdout_path=log_dir / "solver.stdout.jsonl",
                         stderr_path=log_dir / "solver.stderr.log",
                         stream_output=stream_output,
-                        secret_environment=auth_environment(config, self.auth_root),
+                        secret_environment=prepared.secret_environment,
                     )
                     solver_duration_seconds = solver.duration_seconds
                 finally:
@@ -572,7 +600,7 @@ class BenchmarkRunner:
         """Execute matrix cells with bounded concurrency and emit atomic progress updates."""
 
         tasks = discover_tasks(self.project)
-        configs = discover_harnesses(self.project)
+        configs = discover_configurations(self.project)
         if task_filter:
             requested_tasks = (
                 [task_filter] if isinstance(task_filter, str) else list(task_filter)
@@ -624,7 +652,7 @@ class BenchmarkRunner:
             with progress_lock:
                 progress(message)
 
-        def label(index: int, task: TaskConfig, config: HarnessConfig, repetition: int) -> str:
+        def label(index: int, task: TaskConfig, config: TreatmentConfig, repetition: int) -> str:
             """Keep compact labels for focused runs and unambiguous labels for matrices."""
 
             if len(tasks) == 1 and len(configs) == 1:
@@ -663,7 +691,7 @@ class BenchmarkRunner:
         emit("")
 
         def cell_progress(
-            index: int, task: TaskConfig, config: HarnessConfig, repetition: int
+            index: int, task: TaskConfig, config: TreatmentConfig, repetition: int
         ) -> Callable[[str], None]:
             """Attach stable cell identity to updates that may arrive out of order."""
 

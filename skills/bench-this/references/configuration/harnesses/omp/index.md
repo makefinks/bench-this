@@ -1,10 +1,11 @@
 # Oh My Pi
 
-Oh My Pi (`omp`) runs as a non-interactive JSON harness. Pin the complete provider/model selector
-and keep provider credentials in the runner-owned authentication profile. Read a provider-specific
+Oh My Pi (`omp`) runs as a non-interactive JSON harness. Select the complete provider/model pair and
+keep provider credentials in the runner-owned authentication profile. Read a provider-specific
 reference too when the routing table identifies one.
 
 Supported providers are `github-copilot`, `openai-codex`, and `amazon-bedrock`.
+GitHub Copilot may use `auto`; OpenAI Codex and Amazon Bedrock require pinned models.
 
 ```bash
 python <skill-directory>/scripts/configure.py <repository> \

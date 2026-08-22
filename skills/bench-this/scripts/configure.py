@@ -1,30 +1,27 @@
 #!/usr/bin/env python3
-"""Create one pinned benchmark treatment without hand-written YAML."""
+"""Create one catalog-validated benchmark treatment without hand-written YAML."""
 
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import shutil
+import sys
 import tempfile
 from pathlib import Path
-from typing import Dict, Iterable, Optional
+from typing import Iterable, Optional
 
 
-ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
-SUPPORTED_HARNESSES = {"copilot", "omp", "opencode", "pi"}
-SUPPORTED_OPENCODE_PROVIDERS = {
-    "amazon-bedrock",
-    "github-copilot",
-    "openai",
-    "opencode",
-    "opencode-go",
-}
-SUPPORTED_OMP_PROVIDERS = {"amazon-bedrock", "github-copilot", "openai-codex"}
-SUPPORTED_PI_PROVIDERS = {"amazon-bedrock", "openai-codex"}
-GITHUB_COPILOT_BUSINESS_BASE_URL = "https://api.business.githubcopilot.com"
-AWS_REGION_PATTERN = re.compile(r"^[a-z]{2}(?:-[a-z0-9]+)+-[0-9]+$")
+SKILL_ROOT = Path(__file__).resolve().parents[1]
+VENDOR = SKILL_ROOT / "assets" / "benchmarks" / "_vendor"
+sys.path.insert(0, str(VENDOR))
+
+import yaml
+
+from agent_bench.catalog import HARNESS_CATALOG, resolve_selection
+from agent_bench.config import ID_PATTERN, load_configuration
+from agent_bench.errors import ConfigurationError
+from agent_bench.writers import write_native_configuration
 
 
 def _id(value: str, label: str) -> str:
@@ -53,10 +50,13 @@ def _skill_name(skill_dir: Path) -> str:
             name = line.split(":", 1)[1].strip().strip("\"'")
             _id(name, "skill name")
             if skill_dir.name != name:
-                raise ValueError(f"skill directory {skill_dir.name!r} must match name {name!r}")
+                raise ValueError(
+                    f"skill directory {skill_dir.name!r} must match name {name!r}"
+                )
             return name
     else:
         raise ValueError(f"skill frontmatter is missing name: {manifest}")
+    raise ValueError(f"skill frontmatter is missing name: {manifest}")
 
 
 def _reject_symlinks(root: Path, label: str) -> None:
@@ -73,46 +73,43 @@ def create_configuration(
     provider: Optional[str] = None,
     github_copilot_business: bool = False,
     bedrock_region: Optional[str] = None,
+    agent: Optional[str] = None,
+    arguments: Iterable[str] = (),
     config_id: Optional[str] = None,
     skills: Iterable[Path] = (),
 ) -> Path:
-    """Create an atomic configuration directory and return its final path."""
+    """Create one atomic treatment from the bundled catalog and canonical loader."""
 
     repository = repository.expanduser().resolve()
     benchmark_dir = repository / "benchmarks"
     if not (benchmark_dir / "benchmark.yaml").is_file():
         raise ValueError(f"benchmark scaffold not found: {benchmark_dir}")
-    if harness not in SUPPORTED_HARNESSES:
-        raise ValueError(f"harness must be one of: {', '.join(sorted(SUPPORTED_HARNESSES))}")
-    if harness == "opencode" and provider not in SUPPORTED_OPENCODE_PROVIDERS:
-        supported = ", ".join(sorted(SUPPORTED_OPENCODE_PROVIDERS))
-        raise ValueError(f"OpenCode configurations require --provider: {supported}")
-    if harness == "omp" and provider not in SUPPORTED_OMP_PROVIDERS:
-        supported = ", ".join(sorted(SUPPORTED_OMP_PROVIDERS))
-        raise ValueError(f"OMP configurations require --provider: {supported}")
-    if harness == "pi" and provider not in SUPPORTED_PI_PROVIDERS:
-        supported = ", ".join(sorted(SUPPORTED_PI_PROVIDERS))
-        raise ValueError(f"Pi configurations require --provider: {supported}")
-    if harness == "copilot" and provider is not None:
-        raise ValueError(
-            "--provider applies only to OpenCode, Oh My Pi, and Pi configurations"
-        )
-    if github_copilot_business and (harness != "opencode" or provider != "github-copilot"):
+    harness_spec, provider_spec = resolve_selection(harness, provider)
+    provider = provider_spec.id
+
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError("model must be a non-empty string")
+    if model == "auto" and not provider_spec.allow_automatic_model:
+        raise ValueError("model must be explicitly pinned")
+    if github_copilot_business and "github_copilot_business" not in provider_spec.allowed_fields:
         raise ValueError(
             "--github-copilot-business requires --harness opencode "
             "--provider github-copilot"
         )
-    if provider == "amazon-bedrock":
-        if not bedrock_region or not AWS_REGION_PATTERN.fullmatch(bedrock_region):
+    if "region" in provider_spec.required_fields:
+        if not bedrock_region:
             raise ValueError(
                 "Amazon Bedrock configurations require a valid --bedrock-region"
             )
     elif bedrock_region is not None:
         raise ValueError("--bedrock-region applies only to Amazon Bedrock")
-    if not model.strip() or model == "auto":
-        raise ValueError("model must be explicitly pinned")
+    if agent is not None and "agent" not in harness_spec.allowed_fields:
+        raise ValueError(f"--agent does not apply to {harness_spec.display_name}")
+    arguments = list(arguments)
+    if not all(isinstance(argument, str) for argument in arguments):
+        raise ValueError("arguments must be strings")
+
     _id(auth_profile, "auth profile")
-    skill_dirs = [path.expanduser().resolve() for path in skills]
     config_id = (
         _id(config_id, "configuration id")
         if config_id
@@ -124,6 +121,7 @@ def create_configuration(
     if destination.exists():
         raise ValueError(f"configuration already exists: {destination}")
 
+    skill_dirs = [path.expanduser().resolve() for path in skills]
     skill_names = []
     for skill_dir in skill_dirs:
         if not skill_dir.is_dir():
@@ -133,61 +131,40 @@ def create_configuration(
     if len(set(skill_names)) != len(skill_names):
         raise ValueError("skill names must be unique")
 
-    temporary = Path(tempfile.mkdtemp(prefix=".configuration-", dir=config_root))
+    staging_root = Path(
+        tempfile.mkdtemp(prefix=".configuration-", dir=config_root)
+    )
+    temporary = staging_root / config_id
     try:
-        (temporary / "harness").mkdir()
+        (temporary / "harness").mkdir(parents=True)
         (temporary / "workspace").mkdir()
-        manifest_lines = [f"id: {config_id}", f"harness: {harness}"]
-        if harness in {"opencode", "omp", "pi"}:
-            manifest_lines.extend(
-                [
-                    f"provider: {provider}",
-                    f"model: {model}",
-                ]
-            )
-            if harness == "opencode":
-                manifest_lines.append("agent: build")
-            if provider == "amazon-bedrock":
-                manifest_lines.append(f"region: {bedrock_region}")
-        else:
-            manifest_lines.append(f"model: {model}")
-        manifest_lines.extend(
-            [
-                "harness_config: harness",
-                "workspace_config: workspace",
-                f"auth_profile: {auth_profile}",
-                "arguments: []",
-            ]
-        )
-        (temporary / "configuration.yaml").write_text(
-            "\n".join(manifest_lines) + "\n", encoding="utf-8"
-        )
-
-        if harness == "opencode":
-            qualified_model = f"{provider}/{model}"
-            opencode: Dict[str, object] = {
-                "$schema": "https://opencode.ai/config.json",
-                "enabled_providers": [provider],
-                "small_model": qualified_model,
-                "share": "disabled",
+        manifest = dict(harness_spec.generator_defaults)
+        manifest.update({"id": config_id, "harness": harness})
+        if provider is not None:
+            manifest["provider"] = provider
+        manifest["model"] = model
+        if agent is not None:
+            manifest["agent"] = agent
+        if bedrock_region is not None:
+            manifest["region"] = bedrock_region
+        if github_copilot_business:
+            manifest["github_copilot_business"] = True
+        manifest.update(
+            {
+                "harness_config": "harness",
+                "workspace_config": "workspace",
+                "auth_profile": auth_profile,
+                "arguments": arguments,
             }
-            if github_copilot_business:
-                opencode["provider"] = {
-                    "github-copilot": {
-                        "options": {"baseURL": GITHUB_COPILOT_BUSINESS_BASE_URL}
-                    }
-                }
-            elif provider == "amazon-bedrock":
-                opencode["provider"] = {
-                    "amazon-bedrock": {
-                        "options": {"region": bedrock_region}
-                    }
-                }
-            if skill_names:
-                opencode["permission"] = {"skill": {"*": "allow"}}
-            (temporary / "harness" / "opencode.json").write_text(
-                json.dumps(opencode, indent=2) + "\n", encoding="utf-8"
-            )
+        )
+        manifest_path = temporary / "configuration.yaml"
+        manifest_path.write_text(
+            yaml.safe_dump(manifest, sort_keys=False),
+            encoding="utf-8",
+        )
+        config = load_configuration(manifest_path)
+        write_native_configuration(config, skill_names)
+
         skill_root = temporary / "workspace" / ".agents" / "skills"
         for skill_dir, name in zip(skill_dirs, skill_names):
             shutil.copytree(
@@ -197,24 +174,29 @@ def create_configuration(
             )
         temporary.rename(destination)
     finally:
-        shutil.rmtree(temporary, ignore_errors=True)
+        shutil.rmtree(staging_root, ignore_errors=True)
     return destination
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("repository", type=Path)
-    parser.add_argument("--harness", default="opencode", choices=sorted(SUPPORTED_HARNESSES))
+    parser.add_argument("--harness", default="opencode", choices=sorted(HARNESS_CATALOG))
     parser.add_argument(
         "--provider",
         choices=sorted(
-            SUPPORTED_OPENCODE_PROVIDERS
-            | SUPPORTED_OMP_PROVIDERS
-            | SUPPORTED_PI_PROVIDERS
+            {
+                provider
+                for harness in HARNESS_CATALOG.values()
+                for provider in harness.providers
+                if provider is not None
+            }
         ),
     )
     parser.add_argument("--github-copilot-business", action="store_true")
     parser.add_argument("--bedrock-region")
+    parser.add_argument("--agent")
+    parser.add_argument("--argument", action="append", default=[])
     parser.add_argument("--model", required=True)
     parser.add_argument("--auth-profile", required=True)
     parser.add_argument("--id", dest="config_id")
@@ -229,10 +211,12 @@ def main() -> int:
             provider=args.provider,
             github_copilot_business=args.github_copilot_business,
             bedrock_region=args.bedrock_region,
+            agent=args.agent,
+            arguments=args.argument,
             config_id=args.config_id,
             skills=args.skill,
         )
-    except ValueError as exc:
+    except (ValueError, ConfigurationError) as exc:
         parser.error(str(exc))
     print(destination)
     return 0

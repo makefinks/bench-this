@@ -5,29 +5,54 @@ from __future__ import annotations
 
 import argparse
 import os
-import re
 import sys
 from pathlib import Path
 
 
 BEDROCK_TOKEN_VARIABLE = "AGENT_BENCH_BEDROCK_API_KEY"
-PROFILE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+SKILL_ROOT = Path(__file__).resolve().parents[1]
+VENDOR = SKILL_ROOT / "assets" / "benchmarks" / "_vendor"
+sys.path.insert(0, str(VENDOR))
+
+from agent_bench.catalog import AuthPolicy, supported_selections
+
+
+BEDROCK_SELECTIONS = tuple(
+    (harness.id, provider.id)
+    for harness, provider in supported_selections()
+    if provider.auth_policy is AuthPolicy.BEDROCK_BEARER
+)
 
 
 def main() -> int:
-    """Load the target's vendored runner and store one supplied provider secret."""
+    """Use the skill's bundled runner to store one supplied provider secret."""
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("repository", type=Path)
-    parser.add_argument("--harness", required=True, choices=("omp", "opencode", "pi"))
-    parser.add_argument("--provider", required=True, choices=("amazon-bedrock",))
+    parser.add_argument(
+        "--harness",
+        required=True,
+        choices=sorted(harness for harness, _ in BEDROCK_SELECTIONS),
+    )
+    parser.add_argument(
+        "--provider",
+        required=True,
+        choices=sorted({provider for _, provider in BEDROCK_SELECTIONS}),
+    )
     parser.add_argument("--profile", required=True)
     args = parser.parse_args()
+    if (args.harness, args.provider) not in BEDROCK_SELECTIONS:
+        parser.error(
+            f"{args.provider} noninteractive provisioning does not support {args.harness}"
+        )
 
     repository = args.repository.expanduser().resolve()
-    vendor = repository / "benchmarks" / "_vendor"
-    if not (vendor / "agent_bench").is_dir():
-        parser.error(f"benchmark runner not found under {vendor}")
+    benchmark = repository / "benchmarks" / "benchmark.yaml"
+    if not benchmark.is_file():
+        parser.error(f"benchmark scaffold not found: {benchmark.parent}")
+
+    from agent_bench.auth import PROFILE_PATTERN, store_bedrock_credential
+
     if not PROFILE_PATTERN.fullmatch(args.profile):
         parser.error("profile must use lowercase letters, digits, and hyphens")
     token = os.environ.pop(BEDROCK_TOKEN_VARIABLE, None)
@@ -35,17 +60,12 @@ def main() -> int:
         parser.error(
             f"{BEDROCK_TOKEN_VARIABLE} must be supplied through the process environment"
         )
-    sys.path.insert(0, str(vendor))
-    from agent_bench.workspace import store_bedrock_api_key, store_omp_credential
 
-    if args.harness == "omp":
-        destination = store_omp_credential(args.profile, args.provider, token)
-    else:
-        destination = store_bedrock_api_key(
-            args.profile,
-            token,
-            harness=args.harness,
-        )
+    destination = store_bedrock_credential(
+        args.profile,
+        args.harness,
+        token,
+    )
     print(destination)
     return 0
 

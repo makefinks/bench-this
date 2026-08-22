@@ -3,8 +3,10 @@ from pathlib import Path
 
 import pytest
 
+from agent_bench.auth import prepare_home
+
 from agent_bench.errors import ConfigurationError
-from agent_bench.models import Defaults, HarnessConfig, ImageConfig, ProjectConfig, TaskConfig
+from agent_bench.models import Defaults, ImageConfig, ProjectConfig, TaskConfig, TreatmentConfig
 from agent_bench.workspace import (
     PUBLIC_TESTS_WORKSPACE_DIRECTORY,
     copy_contents,
@@ -13,7 +15,6 @@ from agent_bench.workspace import (
     public_test_mutations,
     public_test_snapshot,
     stage_public_tests,
-    stage_home,
 )
 
 
@@ -109,7 +110,7 @@ def test_public_tests_are_visible_and_final_mutations_are_reported(tmp_path):
     overlay = config_root / "workspace"
     harness.mkdir(parents=True)
     overlay.mkdir()
-    config = HarnessConfig(
+    config = TreatmentConfig(
         config_root, "demo", "copilot", "model", harness, overlay, "work", []
     )
     project = ProjectConfig(
@@ -143,7 +144,7 @@ def test_stage_home_uses_only_selected_profile_and_config(tmp_path):
     other = auth / "personal" / "copilot" / ".copilot"
     other.mkdir(parents=True)
     (other / "personal-token.json").write_text("do-not-copy")
-    config = HarnessConfig(
+    config = TreatmentConfig(
         root=root,
         id="copilot",
         harness="copilot",
@@ -155,7 +156,7 @@ def test_stage_home_uses_only_selected_profile_and_config(tmp_path):
     )
 
     home = tmp_path / "home"
-    stage_home(config, home, auth)
+    prepare_home(config, home, auth)
     assert (home / ".copilot/token.json").read_text() == "secret"
     assert (home / ".copilot/settings.json").exists()
     assert not (home / ".copilot/personal-token.json").exists()
@@ -167,7 +168,7 @@ def test_stage_home_rejects_symlinked_auth(tmp_path):
     auth_dir = tmp_path / "auth/work/copilot"
     auth_dir.mkdir(parents=True)
     (auth_dir / "leak").symlink_to(Path.home())
-    config = HarnessConfig(
+    config = TreatmentConfig(
         root=root,
         id="copilot",
         harness="copilot",
@@ -178,4 +179,4 @@ def test_stage_home_rejects_symlinked_auth(tmp_path):
         arguments=[],
     )
     with pytest.raises(ConfigurationError, match="symlink"):
-        stage_home(config, tmp_path / "home", tmp_path / "auth")
+        prepare_home(config, tmp_path / "home", tmp_path / "auth")

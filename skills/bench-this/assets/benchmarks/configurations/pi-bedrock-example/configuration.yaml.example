@@ -1,9 +1,0 @@
-id: pi-bedrock-example
-harness: pi
-provider: amazon-bedrock
-model: replace-with-pinned-model
-region: replace-with-aws-region
-harness_config: harness
-workspace_config: workspace
-auth_profile: bedrock
-arguments: []

@@ -4,8 +4,9 @@ Use this reference only when the user asks you to configure or run a treatment, 
 tasks exist and the user accepts your configuration offer. Task creation and deterministic
 validation do not require a treatment.
 
-This file owns the rules shared by every harness. Read only the additional references required by
-the approved treatment.
+This file owns the rules shared by every harness. The bundled runner catalog is the executable
+support matrix; this routing table only points to the per-harness references. Read only the
+additional references required by the approved treatment.
 
 ## Harness and provider references
 
@@ -35,11 +36,11 @@ page for that combination:
 
 ## Minimal decision
 
-Use configuration values the user already supplied: harness, provider where applicable, pinned
-model, and auth-profile name. A request such as "configure OpenAI GPT-5.4 mini with profile openai"
-remains an OpenCode configuration for backwards compatibility. A request such as "configure Copilot
-CLI with model X and profile copilot" creates a native Copilot treatment. When values are missing,
-propose one concrete configuration and let the user approve, change, or skip it.
+Use configuration values the user already supplied: harness, provider where applicable, selected
+model, and auth-profile name. The generator defaults to OpenCode when the harness is omitted. A
+request such as "configure Copilot CLI with model X and profile copilot" creates a native Copilot
+treatment. When values are missing, propose one concrete configuration and let the user approve,
+change, or skip it.
 
 An auth-profile name such as `copilot-auth`, `copilot`, or `work` does not identify the harness,
 provider, or subscription. If the user has not already specified them, confirm whether Copilot means
@@ -57,9 +58,9 @@ harness to another.
 
 ## Generate the approved configuration
 
-Use the bundled generator instead of hand-writing configuration files. Read the selected harness
-reference for the exact command and any provider-specific additions. The generator refuses to
-overwrite an existing configuration.
+Use the bundled catalog-driven generator instead of hand-writing configuration files. Read the
+selected harness reference for the exact command and any provider-specific additions. The generator
+refuses to overwrite an existing configuration.
 
 Do not add skills or MCP servers to a baseline. They change the treatment and require distinct
 configuration IDs; follow their treatment references after the baseline is defined.
@@ -91,9 +92,9 @@ and do not make a provider call. Offer `auth verify` when standalone verificatio
 request to execute the treatment authorizes its required source-free identity preflight, but it does
 not authorize replacing a missing profile through a new login.
 
-Reject an authentication or subscription combination that cannot explicitly select the configured
-pinned model. Do not replace the model with `auto`; a provider-selected model would make the
-treatment non-reproducible.
+Reject an authentication or subscription combination that cannot select the configured model.
+Native Copilot CLI, OpenCode with GitHub Copilot, and OMP with GitHub Copilot may use `auto`; every
+other catalog selection requires a pinned model.
 
 ## Continue to execution
 

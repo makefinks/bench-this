@@ -653,16 +653,14 @@ raise SystemExit(0 if all(groups.values()) and not candidate_error else 1)</pre>
           command, number of repetitions, optional model prices, and default time limits for the solver,
           setup, and evaluator. Version 1 does not support Docker Compose. Setup and evaluator must have
           positive time limits; the solver limit may be <code>null</code>, as it is in the scaffold.</p>
-        <p>A treatment is the complete agent configuration being tested. Its file selects the command-line
-          command-line agent tool, called a harness, and a fixed model. When OpenCode needs them, it also
-          selects the provider and agent. A treatment may add files to the tool's home directory or the
-          solver workspace, choose an authentication profile, and supply extra command arguments.
-          Supported harnesses are Copilot CLI and OpenCode. OpenCode providers
-          are limited to <code>amazon-bedrock</code>, <code>github-copilot</code>,
-          <code>openai</code>, and <code>opencode-go</code>. Amazon Bedrock configurations also pin
-          an AWS region in their OpenCode settings.
-          The value <code>auto</code> is rejected because it would let the harness choose a model. That
-          would make results harder to reproduce and prevent the runner from checking one expected model.</p>
+        <p>A treatment is the complete agent configuration being tested. Its file selects a catalog
+          harness, one harness-scoped provider where required, a model, authentication profile,
+          harness settings, workspace overlay, and extra command arguments. The static catalog
+          supports native Copilot CLI; OpenCode with Amazon Bedrock, GitHub Copilot, OpenAI,
+          OpenCode Zen, and OpenCode Go; Oh My Pi with Amazon Bedrock, GitHub Copilot, and OpenAI
+          Codex; and Pi with Amazon Bedrock and OpenAI Codex. Native Copilot is the catalog's
+          explicit providerless selection. Models must be pinned except that native and
+          provider-backed GitHub Copilot selections may use <code>auto</code>.</p>
 
         <div class="table-scroll">
           <table class="technical-table">
@@ -670,7 +668,7 @@ raise SystemExit(0 if all(groups.values()) and not candidate_error else 1)</pre>
             <tbody>
               <tr><th><code>load_project</code></th><td><code>benchmark.yaml</code></td><td>Version 1, one existing Dockerfile, a setup command, valid time limits and repetitions, and prices that are zero or greater.</td></tr>
               <tr><th><code>load_task</code></th><td><code>tasks/*/task.yaml</code></td><td>Directory/ID match, commit-like hashes, contained paths, existing prompt/evaluator, unique group IDs, inherited timeout.</td></tr>
-              <tr><th><code>load_harness</code></th><td><code>configurations/*/configuration.yaml</code></td><td>Matching directory and ID, supported harness and provider, fixed model, existing public-file directories, safe profile ID, and text arguments.</td></tr>
+              <tr><th><code>load_configuration</code></th><td><code>configurations/*/configuration.yaml</code></td><td>Catalog harness/provider selection, strict unknown and irrelevant field rejection, model policy, directory/ID match, contained paths, safe profile ID, and text arguments.</td></tr>
             </tbody>
           </table>
         </div>
@@ -679,9 +677,11 @@ raise SystemExit(0 if all(groups.values()) and not candidate_error else 1)</pre>
         <p><a class="file-ref" href="../skills/bench-this/scripts/configure.py">configure.py</a>
           turns approved values into a complete configuration directory. It checks IDs and refuses to
           replace an existing directory or copy a skill tree through a symbolic link. It first writes
-          everything to a temporary directory, then renames that directory into place in one operation.
-          For OpenCode, it writes an <code>opencode.json</code> that enables only the chosen provider,
-          fixes the small model, and disables sharing.</p>
+          everything to a temporary directory, validates the manifest with
+          <code>load_configuration</code>, dispatches the catalog-selected native writer, then
+          renames the directory into place in one operation. The OpenCode writer enables only the
+          chosen provider, fixes the small model, applies provider options, and disables sharing.
+          Other harnesses select an explicit no-op writer.</p>
         <p>Optional skills are copied into that treatment's
           <code>workspace/.agents/skills/&lt;name&gt;/</code> after validating their frontmatter and
           directory name. The generator enables OpenCode skill permission when required, but upstream
@@ -722,9 +722,10 @@ raise SystemExit(0 if all(groups.values()) and not candidate_error else 1)</pre>
       <section class="section" id="container">
         <div class="section-head"><span class="section-index">05</span><div><h2>Docker image and phase boundaries</h2><p class="section-deck">Every task uses the same Docker image. Each phase, however, receives only the files, settings, network access, and time limit it needs.</p></div></div>
         <p>The image has two jobs. First, it reproduces the historical project's build and test
-          environment. Second, it provides the selected coding-agent command-line tool. The scaffold
-          starts with Node 22 on Debian and installs Git, Python, certificates, Copilot CLI, and OpenCode.
-          Benchmark authors add any project runtimes and native libraries. During image creation,
+          environment. Second, it provides only the coding-agent command-line tools selected by the
+          configured treatments. The scaffold starts with Node 22 on Debian and installs Git, Python,
+          and certificates. Catalog metadata supplies pinned installers for Copilot CLI, OpenCode,
+          Oh My Pi, and Pi. During image creation,
           <a class="file-ref" href="../src/agent_bench/runner.py">runner.py</a> uses only the small
           <code>benchmarks/</code> directory as Docker's build input. Project source is mounted later,
           when a phase runs.</p>
@@ -760,37 +761,35 @@ raise SystemExit(0 if all(groups.values()) and not candidate_error else 1)</pre>
       </section>
 
       <section class="section" id="auth">
-        <div class="section-head"><span class="section-index">06</span><div><h2>Authentication and agent commands</h2><p class="section-deck">Credentials stay outside the repository. For each run, the runner checks the selected profile, copies it into a temporary home directory, and verifies the model before exposing project source.</p></div></div>
-        <p>Profiles live at <code>~/.agent-bench/auth/&lt;profile&gt;/&lt;harness&gt;/</code>. Interactive
-          <code>auth login</code> normally runs in the benchmark image with no project-source mount.
-          Copilot asks the user to complete its device login, while OpenCode receives one explicit
-          provider. After an OpenCode login, the runner removes generated caches, logs, databases,
-          package data, and plugin links. It keeps only
-          <code>.local/share/opencode/auth.json</code>, containing credentials for that provider, and
-          restricts the file so only its owner can read or write it.</p>
-        <p>Amazon Bedrock is the provider-specific exception. The runner itself prompts for the
-          Bedrock bearer API key only when a user invokes the manual login command. Agent-assisted
-          setup uses the skill's non-interactive <code>provision_auth.py</code> helper instead, so
-          the orchestrator never launches a command that waits for input. Both paths store the same
-          narrow external profile. The runner forwards the secret to provider containers as
-          <code>AWS_BEARER_TOKEN_BEDROCK</code> without placing the value in Docker process
-          arguments. The credential file is not copied into the temporary OpenCode home.</p>
-        <p>Before a run, <code>validate_auth_profile</code> rejects a missing profile or any symbolic link.
-          For OpenCode, it also rejects unexpected files, invalid JSON, credentials for extra providers,
-          or a provider mismatch. Bedrock profiles must contain exactly one valid bearer token.
-          <code>stage_home</code> copies file-based profiles into a new temporary directory, then adds
-          the treatment's agent settings. This order prevents saved credentials from silently replacing
-          settings that belong to the experiment.</p>
+        <div class="section-head"><span class="section-index">06</span><div><h2>Authentication and agent commands</h2><p class="section-deck">Credentials stay outside the repository. A catalog-selected strategy validates each profile once, stages an approved temporary home, and returns separately injected secrets before source is exposed.</p></div></div>
+        <p>Profiles live at <code>~/.agent-bench/auth/&lt;profile&gt;/&lt;harness&gt;/</code>. The
+          closed authentication registry owns native Copilot device login, OpenCode provider login,
+          Oh My Pi OAuth databases, Pi provider-scoped OAuth JSON, and Bedrock bearer tokens.
+          Interactive OpenCode login runs in the benchmark image with one explicit provider. The
+          strategy removes caches, logs, databases, package data, and plugin links, retaining only
+          <code>.local/share/opencode/auth.json</code> for that provider.</p>
+        <p>Amazon Bedrock uses one runner-owned bearer-token profile per harness. Manual login uses
+          a hidden prompt; agent-assisted setup uses the non-interactive
+          <code>provision_auth.py</code> helper. Both paths store the same narrow external profile.
+          Home preparation parses the token once and returns it as
+          <code>AWS_BEARER_TOKEN_BEDROCK</code> for both preflight and solver execution. The token
+          file never enters the disposable harness home or Docker process arguments.</p>
+        <p>Profile validation rejects symbolic links and malformed structured state. OpenCode must
+          contain exactly one selected credential. Pi stages only the selected
+          <code>auth.json</code>. Oh My Pi parses its SQLite credential metadata and stages only an
+          enabled OAuth database for the selected provider. Native Copilot remains opaque under its
+          existing contract. After strategy staging, the treatment's harness settings overlay the
+          catalog-declared configuration home, so credentials cannot replace experiment settings.</p>
 
         <h3>How the runner starts each agent</h3>
         <div class="table-scroll">
           <table class="technical-table">
-            <thead><tr><th>Concern</th><th>Copilot adapter</th><th>OpenCode adapter</th></tr></thead>
+            <thead><tr><th>Concern</th><th>Copilot adapter</th><th>OpenCode adapter</th><th>Oh My Pi adapter</th><th>Pi adapter</th></tr></thead>
             <tbody>
-              <tr><th>Command mode</th><td>Prompt mode, JSON output, no user questions, autonomous local tools.</td><td><code>opencode run</code>, JSON events, provider-qualified model, configured agent and workspace.</td></tr>
-              <tr><th>Restrictions</th><td>GitHub tool denied, remote export and auto-update disabled.</td><td>Enabled provider constrained by treatment <code>opencode.json</code>; sharing disabled by generator.</td></tr>
-              <tr><th>Environment</th><td><code>HOME</code>, <code>COPILOT_HOME</code>, model, allow-all flag, no color.</td><td><code>HOME</code> plus XDG config, data, and cache roots inside disposable home; Bedrock additionally receives its runner-managed bearer token.</td></tr>
-              <tr><th>Identity evidence</th><td>Last resolved model found in structured output.</td><td>INFO stream lines; every observed provider/model identity must match the configured pair.</td></tr>
+              <tr><th>Command mode</th><td>Prompt mode, JSON output, no user questions, autonomous local tools.</td><td><code>opencode run</code>, JSON events, provider-qualified model, configured agent and workspace.</td><td>Single-shot Pi JSON protocol with OMP approval and workspace flags.</td><td>Single-shot upstream Pi JSON protocol with trusted approval.</td></tr>
+              <tr><th>Restrictions</th><td>GitHub tool denied, remote export and auto-update disabled.</td><td>Enabled provider constrained by treatment <code>opencode.json</code>; sharing disabled.</td><td>No session or title persistence; isolated OMP state.</td><td>No session persistence; updates and telemetry disabled.</td></tr>
+              <tr><th>Environment</th><td>Disposable <code>HOME</code> and <code>COPILOT_HOME</code>.</td><td>Disposable XDG roots; Bedrock token injected separately.</td><td>Disposable <code>.omp</code> agent directory; Bedrock region and token when selected.</td><td>Disposable <code>.pi</code> agent directory; Bedrock region and token when selected.</td></tr>
+              <tr><th>Identity evidence</th><td>Resolved model in structured output.</td><td>Every INFO-stream provider/model identity matches.</td><td colspan="2">Shared Pi-family transcript parsing verifies every provider/model identity and rejects embedded provider errors.</td></tr>
             </tbody>
           </table>
         </div>

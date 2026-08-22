@@ -1,9 +1,0 @@
-id: opencode-openai-example
-harness: opencode
-provider: openai
-model: replace-with-pinned-model
-agent: build
-harness_config: harness
-workspace_config: workspace
-auth_profile: openai
-arguments: []

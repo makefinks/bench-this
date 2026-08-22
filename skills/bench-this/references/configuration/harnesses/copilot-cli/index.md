@@ -40,9 +40,8 @@ After a newly completed login, verify only the matching profile and harness:
 ./benchmarks/run.py auth verify --harness copilot --profile copilot
 ```
 
-Reject an authentication or subscription combination that cannot explicitly select the configured
-pinned model. Do not replace the model with `auto`; a provider-selected model would make the
-treatment non-reproducible.
+Reject an authentication or subscription combination that cannot select the configured model.
+Native Copilot CLI accepts either a pinned model ID or the explicit `auto` selection.
 
 ## Optional native integrations
 

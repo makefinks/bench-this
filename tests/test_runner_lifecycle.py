@@ -10,7 +10,7 @@ from agent_bench.errors import CommandTimeout, InfrastructureError
 from agent_bench.models import (
     CommandResult,
     Defaults,
-    HarnessConfig,
+    TreatmentConfig,
     ImageConfig,
     ProjectConfig,
     RunResult,
@@ -23,6 +23,7 @@ class FakeDocker:
     def __init__(self):
         self.calls = []
         self.timeouts = []
+        self.secret_environments = []
 
     def run(
         self,
@@ -40,6 +41,7 @@ class FakeDocker:
     ):
         mounts = list(mounts)
         self.timeouts.append(timeout_seconds)
+        self.secret_environments.append(secret_environment)
         self.calls.append((command, mounts, network, stdout_path, stderr_path, stream_output))
         targets = {mount.target: mount for mount in mounts}
         if any("BENCH_PREFLIGHT_OK" in part for part in command):
@@ -152,7 +154,7 @@ def test_preflight_happens_before_source_and_hidden_tests_follow_solver(tmp_path
         public_test_command="/bin/sh /public-tests/run.sh /workspace",
         public_test_groups=["public-basic"],
     )
-    config = HarnessConfig(
+    config = TreatmentConfig(
         root=config_root,
         id="copilot",
         harness="copilot",
@@ -178,6 +180,13 @@ def test_preflight_happens_before_source_and_hidden_tests_follow_solver(tmp_path
     assert result.run_id in result.log_directory
     assert len(result.task_digest) == 64
     assert len(result.configuration_digest) == 64
+    injected = [
+        environment
+        for environment in docker.secret_environments
+        if environment is not None
+    ]
+    assert len(injected) == 2
+    assert injected[0] is injected[1]
     assert result.public_test_results == {"public-basic": True}
     assert result.group_results == {"hidden-edge": True}
     assert result.public_test_mutation_detected
@@ -264,7 +273,7 @@ def test_digests_change_with_effective_inputs(tmp_path):
     workspace = config_root / "workspace"
     harness.mkdir(parents=True)
     workspace.mkdir()
-    config = HarnessConfig(config_root, "demo", "copilot", "model", harness, workspace, "work", [])
+    config = TreatmentConfig(config_root, "demo", "copilot", "model", harness, workspace, "work", [])
 
     first_task = task_digest(task)
     first_config = configuration_digest(config)
@@ -294,7 +303,7 @@ def test_matrix_uses_bounded_workers_and_serializes_reporting(tmp_path, monkeypa
         for index in range(2)
     }
     monkeypatch.setattr("agent_bench.runner.discover_tasks", lambda _project: tasks)
-    monkeypatch.setattr("agent_bench.runner.discover_harnesses", lambda _project: configs)
+    monkeypatch.setattr("agent_bench.runner.discover_configurations", lambda _project: configs)
 
     active = 0
     maximum_active = 0
@@ -348,7 +357,7 @@ def test_matrix_rejects_nonpositive_jobs(tmp_path, monkeypatch):
     )
     monkeypatch.setattr("agent_bench.runner.discover_tasks", lambda _project: {"task": object()})
     monkeypatch.setattr(
-        "agent_bench.runner.discover_harnesses", lambda _project: {"config": object()}
+        "agent_bench.runner.discover_configurations", lambda _project: {"config": object()}
     )
 
     with pytest.raises(InfrastructureError, match="jobs must be a positive integer"):
@@ -371,7 +380,7 @@ def test_matrix_runs_an_exact_configuration_subset_in_requested_order(tmp_path, 
         for config_id in ("config-a", "config-b", "config-c")
     }
     monkeypatch.setattr("agent_bench.runner.discover_tasks", lambda _project: {"task": task})
-    monkeypatch.setattr("agent_bench.runner.discover_harnesses", lambda _project: configs)
+    monkeypatch.setattr("agent_bench.runner.discover_configurations", lambda _project: configs)
 
     def run_one(
         _task, config, repetition, experiment_id, stream_output=True, progress=None
@@ -408,7 +417,7 @@ def test_matrix_rejects_any_unknown_configuration_in_subset(tmp_path, monkeypatc
         lambda _project: {"task": type("Task", (), {"id": "task"})()},
     )
     monkeypatch.setattr(
-        "agent_bench.runner.discover_harnesses", lambda _project: {"known": config}
+        "agent_bench.runner.discover_configurations", lambda _project: {"known": config}
     )
 
     with pytest.raises(InfrastructureError, match=r"unknown configuration\(s\): missing"):
@@ -434,7 +443,7 @@ def test_matrix_runs_an_exact_task_subset_in_requested_order(tmp_path, monkeypat
     config = type("Config", (), {"id": "config", "harness": "fixture"})()
     monkeypatch.setattr("agent_bench.runner.discover_tasks", lambda _project: tasks)
     monkeypatch.setattr(
-        "agent_bench.runner.discover_harnesses", lambda _project: {"config": config}
+        "agent_bench.runner.discover_configurations", lambda _project: {"config": config}
     )
 
     def run_one(
@@ -469,7 +478,7 @@ def test_matrix_rejects_any_unknown_task_in_subset(tmp_path, monkeypatch):
         "agent_bench.runner.discover_tasks", lambda _project: {"known": task}
     )
     monkeypatch.setattr(
-        "agent_bench.runner.discover_harnesses",
+        "agent_bench.runner.discover_configurations",
         lambda _project: {
             "config": type("Config", (), {"id": "config", "harness": "fixture"})()
         },
@@ -575,7 +584,7 @@ def test_single_cell_is_quiet_by_default_and_verbose_runs_serially(tmp_path, mon
     config = type("Config", (), {"id": "config", "harness": "fixture"})()
     monkeypatch.setattr("agent_bench.runner.discover_tasks", lambda _project: {"task": task})
     monkeypatch.setattr(
-        "agent_bench.runner.discover_harnesses", lambda _project: {"config": config}
+        "agent_bench.runner.discover_configurations", lambda _project: {"config": config}
     )
     stream_values = []
 
@@ -625,7 +634,7 @@ def test_incorrect_result_is_not_labeled_as_evaluator_failure(tmp_path, monkeypa
     config = type("Config", (), {"id": "config", "harness": "fixture"})()
     monkeypatch.setattr("agent_bench.runner.discover_tasks", lambda _project: {"task": task})
     monkeypatch.setattr(
-        "agent_bench.runner.discover_harnesses", lambda _project: {"config": config}
+        "agent_bench.runner.discover_configurations", lambda _project: {"config": config}
     )
 
     def run_one(

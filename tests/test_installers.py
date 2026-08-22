@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -33,6 +34,27 @@ def test_render_combines_selected_harnesses_deterministically():
 def test_render_rejects_unknown_harness():
     with pytest.raises(ValueError, match="unsupported harness installers"):
         render_harness_installs(["unknown"])
+
+
+def test_render_rejects_conflicting_catalog_build_arguments(monkeypatch):
+    monkeypatch.setattr(
+        "agent_bench.installers.HARNESS_CATALOG",
+        {
+            "a": SimpleNamespace(
+                installer=SimpleNamespace(
+                    arguments={"SHARED": "one"}, commands=("install-a",)
+                )
+            ),
+            "b": SimpleNamespace(
+                installer=SimpleNamespace(
+                    arguments={"SHARED": "two"}, commands=("install-b",)
+                )
+            ),
+        },
+    )
+
+    with pytest.raises(ValueError, match="conflicting generated build argument SHARED"):
+        render_harness_installs(["a", "b"])
 
 
 def test_render_replaces_dockerfile_marker_without_mutating_source(tmp_path: Path):
@@ -70,7 +92,7 @@ def test_build_passes_rendered_dockerfile_to_engine(tmp_path: Path, monkeypatch)
 
     engine = FakeDocker()
     monkeypatch.setattr(
-        "agent_bench.runner.discover_harnesses",
+        "agent_bench.runner.discover_configurations",
         lambda _project: {"omp": type("Config", (), {"harness": "omp"})()},
     )
 

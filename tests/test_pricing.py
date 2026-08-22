@@ -6,7 +6,7 @@ import pytest
 
 from agent_bench.models import (
     Defaults,
-    HarnessConfig,
+    TreatmentConfig,
     ImageConfig,
     ModelPrice,
     ProjectConfig,
@@ -36,8 +36,8 @@ def project(tmp_path: Path, prices=None) -> ProjectConfig:
     )
 
 
-def config(tmp_path: Path) -> HarnessConfig:
-    return HarnessConfig(
+def config(tmp_path: Path) -> TreatmentConfig:
+    return TreatmentConfig(
         root=tmp_path,
         id="openai-model",
         harness="opencode",
@@ -75,7 +75,7 @@ def test_models_dev_price_maps_provider_rates_and_caches(monkeypatch):
     assert calls == [("https://models.dev/api.json", 1.5)]
 
 
-def test_models_dev_price_resolves_provider_alias(monkeypatch):
+def test_models_dev_price_does_not_apply_provider_aliases(monkeypatch):
     payload = {
         "openai": {
             "models": {
@@ -87,13 +87,8 @@ def test_models_dev_price_resolves_provider_alias(monkeypatch):
         "agent_bench.pricing.urllib.request.urlopen",
         lambda request, timeout: Response(json.dumps(payload).encode()),
     )
-    pricing = ModelsDevPricing()
 
-    # models.dev does not list OAuth wrappers like openai-codex directly.
-    assert pricing.price("openai-codex", "model") == ModelPrice(
-        1, 4, reasoning_per_million_usd=4, cache_read_per_million_usd=0.2
-    )
-    assert pricing.price("unknown-provider", "model") is None
+    assert ModelsDevPricing().price("openai-codex", "model") is None
 
 
 @pytest.mark.parametrize(
@@ -174,7 +169,7 @@ def test_native_copilot_uses_github_copilot_estimate(tmp_path):
             assert (provider, model) == ("github-copilot", "model")
             return ModelPrice(1, 2, 2, 0.1, 0.5)
 
-    copilot = HarnessConfig(
+    copilot = TreatmentConfig(
         root=tmp_path,
         id="copilot-model",
         harness="copilot",
@@ -195,7 +190,7 @@ def test_pi_uses_selected_provider_estimate(tmp_path):
             assert (provider, model) == ("amazon-bedrock", "model")
             return ModelPrice(1, 2, 2, 0.1, 0.5)
 
-    pi = HarnessConfig(
+    pi = TreatmentConfig(
         root=tmp_path,
         id="pi-model",
         harness="pi",
@@ -209,3 +204,26 @@ def test_pi_uses_selected_provider_estimate(tmp_path):
     runner = BenchmarkRunner(project(tmp_path), pricing=Pricing())
 
     assert runner._estimate(pi, Usage(input_tokens=1_000_000)) == 1
+
+
+def test_codex_pricing_identity_comes_from_provider_catalog(tmp_path):
+    class Pricing:
+        def price(self, provider, model):
+            assert (provider, model) == ("openai", "model")
+            return ModelPrice(1, 2)
+
+    codex = TreatmentConfig(
+        root=tmp_path,
+        id="pi-codex",
+        harness="pi",
+        provider="openai-codex",
+        model="model",
+        harness_config=tmp_path / "harness",
+        workspace_config=tmp_path / "workspace",
+        auth_profile="codex",
+        arguments=[],
+    )
+
+    assert BenchmarkRunner(project(tmp_path), pricing=Pricing())._estimate(
+        codex, Usage(input_tokens=1_000_000)
+    ) == 1

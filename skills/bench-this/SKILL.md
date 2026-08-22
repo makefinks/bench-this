@@ -264,11 +264,11 @@ When the user asks to set or compare reasoning effort, also read
 [references/configuration/treatments/reasoning-effort.md](references/configuration/treatments/reasoning-effort.md).
 Reasoning controls are harness-specific experimental inputs, not portable model settings.
 
-If the user already supplied the harness, provider where applicable, pinned model, and auth-profile
-name, use the bundled configuration generator without asking them to repeat those values. Otherwise,
-after deterministic task validation, offer one concrete recommended configuration plus the option
-to skip. Do not create it until the user approves; never infer authorization from scaffold examples,
-credential folders, or provider error suggestions.
+If the user already supplied the harness, provider where applicable, selected model, and
+auth-profile name, use the bundled catalog-driven configuration generator without asking them to
+repeat those values. Otherwise, after deterministic task validation, offer one concrete recommended
+configuration plus the option to skip. Do not create it until the user approves; never infer
+authorization from credential folders, documentation fragments, or provider error suggestions.
 
 For Amazon Bedrock, never choose a missing model or region from memory. Use the live official AWS
 and harness documentation linked from the selected harness's provider reference, then verify the
@@ -308,16 +308,15 @@ treatment execution. Follow the routing table in
 [references/configuration.md](references/configuration.md) for exact harness and provider commands
 and failure handling.
 
-The bundled OpenCode Go example uses provider `opencode-go`, model `glm-5.2`, and the suggested
-profile label `opencode-go`. Treat profile labels as user-chosen names; they are separate from the
-provider and model.
+For OpenCode Go, use provider `opencode-go`; the suggested profile label is `opencode-go`. For
+OpenCode Zen, use provider `opencode`; the suggested profile label is `opencode-zen`. Provider IDs
+and profile labels are separate.
 
-For OpenCode Zen, use provider `opencode`; the suggested profile label is `opencode-zen`. Provider
-IDs and profile labels are separate.
-
-The generator defaults to OpenCode. Use `--harness copilot` for native
-Copilot CLI treatments or `--harness omp` for Oh My Pi treatments. Provider is valid with OpenCode
-and Oh My Pi, with each harness's supported provider set.
+The generator defaults to OpenCode and reads the exact catalog bundled with this skill. Use
+`--harness copilot` for native Copilot CLI, `--harness omp` for Oh My Pi, and `--harness pi` for Pi.
+Native Copilot CLI omits the provider. OpenCode, Oh My Pi, and Pi require one of their
+harness-scoped catalog providers. Native and provider-backed GitHub Copilot selections may use
+`auto`; every other selection requires a pinned model.
 
 Configuring treatments or validating tasks does not authorize their execution. Run treatments only
 when the user explicitly asks you to do so, and execute exactly the requested task, configuration,

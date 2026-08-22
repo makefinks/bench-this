@@ -1,32 +1,21 @@
 """Command-line entry point for scaffolding, validation, auth, and benchmark runs."""
 
 import argparse
-import getpass
 import json
-import shutil
 import sys
 from statistics import mean
 from pathlib import Path
 
+from .auth import login
+from .catalog import HARNESS_CATALOG
 from .config import (
-    AMAZON_BEDROCK_PROVIDER,
-    SUPPORTED_OMP_PROVIDERS,
-    SUPPORTED_OPENCODE_PROVIDERS,
-    SUPPORTED_PI_PROVIDERS,
-    discover_harnesses,
+    discover_configurations,
     discover_tasks,
     load_project,
 )
-from .docker import DockerEngine, Mount
 from .errors import BenchmarkError, ConfigurationError, InfrastructureError
-from .harnesses import adapter_for
 from .runner import DEFAULT_JOBS, BenchmarkRunner
 from .scaffold import scaffold
-from .workspace import (
-    auth_profile_root,
-    store_bedrock_api_key,
-    store_omp_credential,
-)
 
 
 def _benchmark_dir(value: str) -> Path:
@@ -87,122 +76,24 @@ def _parser() -> argparse.ArgumentParser:
     auth_commands = auth.add_subparsers(dest="auth_command", required=True)
     login = auth_commands.add_parser("login")
     login.add_argument(
-        "--harness", choices=("copilot", "omp", "opencode", "pi"), required=True
+        "--harness", choices=sorted(HARNESS_CATALOG), required=True
     )
     login.add_argument("--profile", required=True)
     login.add_argument(
         "--provider",
         choices=sorted(
-            SUPPORTED_OPENCODE_PROVIDERS
-            | SUPPORTED_OMP_PROVIDERS
-            | SUPPORTED_PI_PROVIDERS
+            provider_id
+            for harness in HARNESS_CATALOG.values()
+            for provider_id in harness.providers
+            if provider_id is not None
         ),
     )
     verify = auth_commands.add_parser("verify")
     verify.add_argument("--profile", required=True)
-    verify.add_argument("--harness", choices=("copilot", "omp", "opencode", "pi"))
+    verify.add_argument("--harness", choices=sorted(HARNESS_CATALOG))
     return parser
 
 
-def _login(project, harness: str, profile: str, provider=None) -> None:
-    """Create one runner profile through the provider-specific authentication flow."""
-
-    if not profile.replace("-", "").isalnum() or profile.lower() != profile:
-        raise ConfigurationError("profile must use lowercase letters, digits, and hyphens")
-    if harness == "copilot" and provider is not None:
-        raise ConfigurationError("--provider applies only to OpenCode, OMP, and Pi")
-    if harness == "opencode" and provider not in SUPPORTED_OPENCODE_PROVIDERS:
-        raise ConfigurationError(
-            "OpenCode login requires --provider "
-            + ", ".join(sorted(SUPPORTED_OPENCODE_PROVIDERS))
-        )
-    if harness == "omp" and provider not in SUPPORTED_OMP_PROVIDERS:
-        raise ConfigurationError(
-            "OMP login requires --provider "
-            + ", ".join(sorted(SUPPORTED_OMP_PROVIDERS))
-        )
-    if harness == "pi" and provider not in SUPPORTED_PI_PROVIDERS:
-        raise ConfigurationError(
-            "Pi login requires --provider "
-            + ", ".join(sorted(SUPPORTED_PI_PROVIDERS))
-        )
-    destination = auth_profile_root(profile, harness)
-    destination.mkdir(parents=True, exist_ok=True)
-    if harness in {"omp", "pi"}:
-        if provider == AMAZON_BEDROCK_PROVIDER:
-            if harness == "omp":
-                token = getpass.getpass(f"{provider} API token: ")
-                store_omp_credential(profile, provider, token)
-            else:
-                token = getpass.getpass("Amazon Bedrock API key: ")
-                store_bedrock_api_key(profile, token, harness="pi")
-        else:
-            agent_dir = (
-                destination / ".omp" / "agent"
-                if harness == "omp"
-                else destination / ".pi" / "agent"
-            )
-            executable = "omp" if harness == "omp" else "pi"
-            raise ConfigurationError(
-                f"{harness.upper()} OAuth login must be completed in the user's terminal. Run:\n"
-                f"PI_CODING_AGENT_DIR={agent_dir} {executable}\n"
-                f"Then run /login {provider} inside {harness.upper()} and retry."
-            )
-        print(f"Saved {harness} profile under {destination}")
-        return
-    engine = DockerEngine()
-    environment = {"HOME": "/home/bench", "NO_COLOR": "1"}
-    if harness == "copilot":
-        environment["COPILOT_HOME"] = "/home/bench/.copilot"
-        command = ["copilot"]
-        print("In Copilot CLI, run /login, finish the device flow, then exit with Ctrl-D.")
-    else:
-        if provider == AMAZON_BEDROCK_PROVIDER:
-            token = getpass.getpass("Amazon Bedrock API key: ")
-            store_bedrock_api_key(profile, token)
-            print(f"Saved {harness} profile under {destination}")
-            return
-        environment.update(
-            {
-                "XDG_CONFIG_HOME": "/home/bench/.config",
-                "XDG_DATA_HOME": "/home/bench/.local/share",
-            }
-        )
-        # Pinning the provider prevents an interactive selection mistake from
-        # producing credentials for a different experimental treatment.
-        command = ["opencode", "auth", "login", "--provider", provider]
-    engine.run_interactive(
-        project.image.name,
-        command,
-        [Mount(destination, "/home/bench")],
-        environment,
-    )
-    if harness == "opencode":
-        _narrow_opencode_profile(destination, provider)
-    print(f"Saved {harness} profile under {destination}")
-
-
-def _narrow_opencode_profile(destination: Path, provider: str) -> None:
-    """Retain only one provider credential and discard login-generated state."""
-
-    auth_path = destination / ".local" / "share" / "opencode" / "auth.json"
-    try:
-        credentials = json.loads(auth_path.read_text(encoding="utf-8"))
-        selected = credentials[provider]
-    except (FileNotFoundError, json.JSONDecodeError, KeyError, TypeError) as exc:
-        raise InfrastructureError(
-            f"OpenCode login did not create a valid {provider!r} credential"
-        ) from exc
-
-    # OpenCode login also creates caches, logs, databases, npm state, and plugin
-    # symlinks. None are credentials, and retaining them broadens the run profile.
-    shutil.rmtree(destination)
-    auth_path.parent.mkdir(parents=True, exist_ok=True)
-    auth_path.write_text(
-        json.dumps({provider: selected}, separators=(",", ":")) + "\n",
-        encoding="utf-8",
-    )
-    auth_path.chmod(0o600)
 
 
 def main(argv=None) -> int:
@@ -227,7 +118,7 @@ def main(argv=None) -> int:
             )
             tasks = discover_tasks(project) if task_files else {}
             configs = (
-                discover_harnesses(project)
+                discover_configurations(project)
                 if config_files
                 else {}
             )
@@ -311,11 +202,17 @@ def main(argv=None) -> int:
                     f"{project.benchmark_dir / 'results' / 'raw' / experiment_id}/"
                 )
         elif args.command == "auth" and args.auth_command == "login":
-            _login(project, args.harness, args.profile, args.provider)
+            destination = login(
+                project,
+                args.harness,
+                args.profile,
+                args.provider,
+            )
+            print(f"Saved {args.harness} profile under {destination}")
         elif args.command == "auth" and args.auth_command == "verify":
             configs = [
                 config
-                for config in discover_harnesses(project).values()
+                for config in discover_configurations(project).values()
                 if config.auth_profile == args.profile
                 and (args.harness is None or config.harness == args.harness)
             ]

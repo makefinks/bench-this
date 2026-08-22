@@ -72,6 +72,8 @@ auth_profile: copilot
 arguments: []
 ```
 
+Native Copilot CLI may use `model: auto`. Other providerless values are rejected.
+
 ## OpenCode configuration
 
 ```yaml
@@ -85,6 +87,9 @@ workspace_config: workspace
 auth_profile: copilot
 arguments: []
 ```
+
+OpenCode with GitHub Copilot may use `model: auto`. Add
+`github_copilot_business: true` only for a confirmed Copilot Business account.
 
 For OpenCode authenticated through its OpenAI OAuth flow, use:
 
@@ -117,10 +122,10 @@ arguments: []
 For OpenCode Zen, use its provider ID separately from the local auth-profile label:
 
 ```yaml
-id: opencode-zen-deepseek-v4-flash-free
+id: opencode-zen-deepseek-v4-flash
 harness: opencode
 provider: opencode
-model: deepseek-v4-flash-free
+model: deepseek-v4-flash
 agent: build
 harness_config: harness
 workspace_config: workspace
@@ -142,6 +147,7 @@ harness: opencode
 provider: amazon-bedrock
 model: model-a
 agent: build
+region: us-east-1
 harness_config: harness
 workspace_config: workspace
 auth_profile: bedrock
@@ -151,6 +157,26 @@ arguments: []
 The corresponding `harness/opencode.json` must pin the AWS region under
 `provider.amazon-bedrock.options.region`. The external profile supplies
 `AWS_BEARER_TOKEN_BEDROCK`; never put that token in YAML or `opencode.json`.
+
+Every treatment manifest uses one strict flat schema. The loader rejects unknown fields, fields that
+do not apply to the selected catalog entry, missing providers, provider fields on native Copilot,
+and automatic models outside the three GitHub Copilot selections.
+
+## Oh My Pi configuration
+
+```yaml
+id: omp-codex-model-a
+harness: omp
+provider: openai-codex
+model: model-a
+harness_config: harness
+workspace_config: workspace
+auth_profile: codex
+arguments: []
+```
+
+OMP with GitHub Copilot may use `model: auto`. OMP Amazon Bedrock configurations use
+`provider: amazon-bedrock` and add the required `region`.
 
 ## Pi configuration
 

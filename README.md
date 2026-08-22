@@ -211,11 +211,11 @@ When diagnosis is necessary, the agent can retry one task with live logs:
 ### 4. Choose treatments
 
 A treatment is the complete agent configuration being compared: harness, provider when applicable,
-pinned model, harness settings, workspace overlay, and authentication profile.
+selected model, harness settings, workspace overlay, and authentication profile.
 
 You provide the comparison you care about, or you approve a concrete recommendation after task
-validation. Either way, the agent uses the bundled generator to avoid hand-written configuration
-mistakes. The equivalent command for an OpenCode treatment is:
+validation. The equivalent command for an OpenCode
+treatment is:
 
 ```bash
 python <skill-directory>/scripts/configure.py <target-repository> \
@@ -230,7 +230,7 @@ For native Copilot CLI, the agent omits the provider:
 ```bash
 python <skill-directory>/scripts/configure.py <target-repository> \
   --harness copilot \
-  --model <pinned-model> \
+  --model <pinned-model-or-auto> \
   --auth-profile <profile>
 ```
 
@@ -264,6 +264,9 @@ Copilot Business accounts used through OpenCode require the dedicated
 treatment's OpenCode configuration; it does not accept an arbitrary base URL. A profile name such
 as `copilot-auth` alone does not select native Copilot CLI, the OpenCode provider, or the Business
 subscription.
+
+Native Copilot CLI, OpenCode with GitHub Copilot, and OMP with GitHub Copilot accept `auto`. Other
+provider selections require a pinned model.
 
 Skills, MCP servers, reasoning settings, and workspace instructions belong in separate treatment
 variants. Keeping the baseline plain makes any change in correctness, cost, or runtime attributable

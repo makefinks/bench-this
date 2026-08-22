@@ -7,11 +7,11 @@ from agent_bench.harnesses import (
     OpenCodeAdapter,
     PiAdapter,
 )
-from agent_bench.models import HarnessConfig
+from agent_bench.models import TreatmentConfig
 
 
 def config(tmp_path, harness="copilot"):
-    return HarnessConfig(
+    return TreatmentConfig(
         root=tmp_path,
         id=f"{harness}-fixture",
         harness=harness,
@@ -61,9 +61,47 @@ def test_model_mismatch_is_fail_closed(tmp_path):
         adapter.verify_identity('{"model":"fallback-model"}')
 
 
+def test_native_copilot_auto_accepts_reported_resolved_model(tmp_path):
+    value = TreatmentConfig(**{**config(tmp_path).__dict__, "model": "auto"})
+
+    assert CopilotAdapter(value).verify_identity(
+        '{"model":"resolved-model"}'
+    ) == (None, "resolved-model")
+
+
+def test_opencode_copilot_auto_still_requires_selected_provider(tmp_path):
+    value = TreatmentConfig(
+        **{**config(tmp_path, "opencode").__dict__, "model": "auto"}
+    )
+    adapter = OpenCodeAdapter(value)
+
+    adapter.verify_identity(
+        '{"providerID":"github-copilot","modelID":"resolved-model"}'
+    )
+    with pytest.raises(IdentityMismatch):
+        adapter.verify_identity(
+            '{"providerID":"openai","modelID":"resolved-model"}'
+        )
+
+
+def test_omp_copilot_auto_accepts_reported_resolved_model(tmp_path):
+    value = TreatmentConfig(
+        **{
+            **config(tmp_path, "omp").__dict__,
+            "provider": "github-copilot",
+            "model": "auto",
+        }
+    )
+
+    OmpAdapter(value).verify_identity(
+        '{"type":"message_end","message":{"role":"assistant",'
+        '"provider":"github-copilot","model":"resolved-model"}}'
+    )
+
+
 def test_opencode_openai_identity_is_accepted_when_pinned(tmp_path):
     value = config(tmp_path, "opencode")
-    value = HarnessConfig(**{**value.__dict__, "provider": "openai"})
+    value = TreatmentConfig(**{**value.__dict__, "provider": "openai"})
     OpenCodeAdapter(value).verify_identity(
         '{"providerID":"openai","modelID":"gpt-fixed"}'
     )
@@ -71,7 +109,7 @@ def test_opencode_openai_identity_is_accepted_when_pinned(tmp_path):
 
 def test_omp_command_is_single_shot_and_provider_qualified(tmp_path):
     value = config(tmp_path, "omp")
-    value = HarnessConfig(**{**value.__dict__, "provider": "openai-codex"})
+    value = TreatmentConfig(**{**value.__dict__, "provider": "openai-codex"})
     command = OmpAdapter(value).command("fix it")
     assert command[:4] == ["omp", "--print", "--mode", "json"]
     assert "--no-session" in command
@@ -80,7 +118,7 @@ def test_omp_command_is_single_shot_and_provider_qualified(tmp_path):
 
 def test_omp_identity_requires_provider_and_model(tmp_path):
     value = config(tmp_path, "omp")
-    value = HarnessConfig(**{**value.__dict__, "provider": "openai-codex"})
+    value = TreatmentConfig(**{**value.__dict__, "provider": "openai-codex"})
     adapter = OmpAdapter(value)
     adapter.verify_identity(
         '{"type":"message_end","message":{"role":"assistant","provider":"openai-codex","model":"gpt-fixed"}}'
@@ -94,7 +132,7 @@ def test_omp_identity_requires_provider_and_model(tmp_path):
 
 def test_omp_environment_isolated_and_supports_bedrock_region(tmp_path):
     value = config(tmp_path, "omp")
-    value = HarnessConfig(**{**value.__dict__, "provider": "amazon-bedrock", "region": "eu-west-1"})
+    value = TreatmentConfig(**{**value.__dict__, "provider": "amazon-bedrock", "region": "eu-west-1"})
     environment = OmpAdapter(value).environment()
     assert environment["PI_CONFIG_DIR"] == ".omp"
     assert environment["PI_CODING_AGENT_DIR"] == "/home/bench/.omp/agent"
@@ -102,7 +140,7 @@ def test_omp_environment_isolated_and_supports_bedrock_region(tmp_path):
 
 def test_pi_command_and_environment_are_isolated(tmp_path):
     value = config(tmp_path, "pi")
-    value = HarnessConfig(**{**value.__dict__, "provider": "openai-codex"})
+    value = TreatmentConfig(**{**value.__dict__, "provider": "openai-codex"})
     adapter = PiAdapter(value)
 
     command = adapter.command("fix it")
@@ -120,7 +158,7 @@ def test_pi_command_and_environment_are_isolated(tmp_path):
 
 def test_pi_bedrock_uses_default_aws_profile_and_pinned_region(tmp_path):
     value = config(tmp_path, "pi")
-    value = HarnessConfig(
+    value = TreatmentConfig(
         **{
             **value.__dict__,
             "provider": "amazon-bedrock",
@@ -136,7 +174,7 @@ def test_pi_bedrock_uses_default_aws_profile_and_pinned_region(tmp_path):
 
 def test_pi_preflight_requires_matching_identity_and_exact_response(tmp_path):
     value = config(tmp_path, "pi")
-    value = HarnessConfig(**{**value.__dict__, "provider": "openai-codex"})
+    value = TreatmentConfig(**{**value.__dict__, "provider": "openai-codex"})
     adapter = PiAdapter(value)
     successful = """{"type":"message_end","message":{"role":"assistant","provider":"openai-codex","model":"gpt-fixed","content":[{"type":"text","text":"BENCH_PREFLIGHT_OK"}],"stopReason":"stop"}}
 """
@@ -148,7 +186,7 @@ def test_pi_preflight_requires_matching_identity_and_exact_response(tmp_path):
 
 def test_omp_preflight_requires_successful_exact_response(tmp_path):
     value = config(tmp_path, "omp")
-    value = HarnessConfig(**{**value.__dict__, "provider": "amazon-bedrock"})
+    value = TreatmentConfig(**{**value.__dict__, "provider": "amazon-bedrock"})
     adapter = OmpAdapter(value)
     successful = """{"type":"message_end","message":{"role":"assistant","provider":"amazon-bedrock","model":"gpt-fixed","content":[{"type":"text","text":"\\nBENCH_PREFLIGHT_OK"}],"stopReason":"stop"}}
 """
@@ -160,7 +198,7 @@ def test_omp_preflight_requires_successful_exact_response(tmp_path):
 
 def test_omp_rejects_embedded_provider_error_but_not_tool_error(tmp_path):
     value = config(tmp_path, "omp")
-    value = HarnessConfig(**{**value.__dict__, "provider": "amazon-bedrock"})
+    value = TreatmentConfig(**{**value.__dict__, "provider": "amazon-bedrock"})
     adapter = OmpAdapter(value)
     adapter.verify_solver(
         '{"type":"tool_execution_end","isError":true,"result":{"details":{"response":{"model":"image-inspection-model"}}}}\n'
@@ -182,7 +220,7 @@ def test_omp_rejects_terminal_deadline_abort_despite_zero_exit(tmp_path):
     # oh-my-pi#7635: JSON-mode deadline aborts exit 0 and only the terminal
     # assistant message carries stopReason "aborted".
     value = config(tmp_path, "omp")
-    value = HarnessConfig(**{**value.__dict__, "provider": "amazon-bedrock"})
+    value = TreatmentConfig(**{**value.__dict__, "provider": "amazon-bedrock"})
     adapter = OmpAdapter(value)
     transcript = (
         '{"type":"message_end","message":{"role":"assistant","provider":"amazon-bedrock",'
@@ -196,7 +234,7 @@ def test_omp_rejects_terminal_deadline_abort_despite_zero_exit(tmp_path):
 
 def test_omp_ignores_midstream_abort_after_recovery(tmp_path):
     value = config(tmp_path, "omp")
-    value = HarnessConfig(**{**value.__dict__, "provider": "amazon-bedrock"})
+    value = TreatmentConfig(**{**value.__dict__, "provider": "amazon-bedrock"})
     adapter = OmpAdapter(value)
     recovered = (
         '{"type":"message_end","message":{"role":"assistant","provider":"amazon-bedrock",'
@@ -211,7 +249,7 @@ def test_omp_catches_truncated_stream_terminal_abort(tmp_path):
     # Truncated streams (oh-my-pi#7635 class) end at turn_end with no agent_end;
     # the turn-boundary message is then the terminal state.
     value = config(tmp_path, "omp")
-    value = HarnessConfig(**{**value.__dict__, "provider": "amazon-bedrock"})
+    value = TreatmentConfig(**{**value.__dict__, "provider": "amazon-bedrock"})
     adapter = OmpAdapter(value)
     truncated = (
         '{"type":"message_end","message":{"role":"assistant","provider":"amazon-bedrock",'

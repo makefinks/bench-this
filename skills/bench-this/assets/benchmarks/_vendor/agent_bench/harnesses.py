@@ -2,10 +2,11 @@
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Mapping, Optional, Tuple
 
+from .catalog import AdapterKind
 from .errors import ConfigurationError, IdentityMismatch, InfrastructureError
-from .models import HarnessConfig, Usage
+from .models import TreatmentConfig, Usage
 from .telemetry import (
     extract_identities,
     extract_identity,
@@ -23,7 +24,7 @@ PREFLIGHT_PROMPT = "Reply with exactly BENCH_PREFLIGHT_OK. Do not read or write 
 class HarnessAdapter(ABC):
     """Shared harness contract for command construction and telemetry handling."""
 
-    def __init__(self, config: HarnessConfig):
+    def __init__(self, config: TreatmentConfig):
         self.config = config
 
     @abstractmethod
@@ -53,7 +54,7 @@ class HarnessAdapter(ABC):
         """Abort when the resolved model is missing or differs from the pin."""
 
         provider, model = extract_identity(f"{stdout}\n{stderr}")
-        if model != self.config.model:
+        if self.config.model != "auto" and model != self.config.model:
             raise IdentityMismatch(
                 f"expected model {self.config.model!r}, harness reported {model!r}"
             )
@@ -154,7 +155,8 @@ class OpenCodeAdapter(HarnessAdapter):
         unexpected = [
             f"{provider}/{model}"
             for provider, model in identities
-            if provider != self.config.provider or model != self.config.model
+            if provider != self.config.provider
+            or (self.config.model != "auto" and model != self.config.model)
         ]
         if unexpected:
             raise IdentityMismatch(
@@ -185,7 +187,8 @@ class _PiJsonAdapter(HarnessAdapter):
         unexpected = [
             f"{provider}/{model}"
             for provider, model in identities
-            if provider != self.config.provider or model != self.config.model
+            if provider != self.config.provider
+            or (self.config.model != "auto" and model != self.config.model)
         ]
         if unexpected:
             raise IdentityMismatch(
@@ -324,15 +327,21 @@ class PiAdapter(_PiJsonAdapter):
         return environment
 
 
-def adapter_for(config: HarnessConfig) -> HarnessAdapter:
-    """Select one of the supported direct harness branches."""
+ADAPTER_REGISTRY: Mapping[AdapterKind, type[HarnessAdapter]] = {
+    AdapterKind.COPILOT: CopilotAdapter,
+    AdapterKind.OPENCODE: OpenCodeAdapter,
+    AdapterKind.OMP: OmpAdapter,
+    AdapterKind.PI: PiAdapter,
+}
 
-    if config.harness == "copilot":
-        return CopilotAdapter(config)
-    if config.harness == "opencode":
-        return OpenCodeAdapter(config)
-    if config.harness == "omp":
-        return OmpAdapter(config)
-    if config.harness == "pi":
-        return PiAdapter(config)
-    raise ConfigurationError(f"unsupported harness: {config.harness}")
+
+def adapter_for(config: TreatmentConfig) -> HarnessAdapter:
+    """Resolve the catalog-selected adapter and fail closed if it is unregistered."""
+
+    try:
+        adapter = ADAPTER_REGISTRY[config.harness_spec.adapter]
+    except KeyError as exc:
+        raise ConfigurationError(
+            f"unsupported or unregistered harness adapter: {config.harness}"
+        ) from exc
+    return adapter(config)

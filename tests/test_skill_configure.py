@@ -3,7 +3,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from agent_bench.config import load_harness
+import pytest
+
+from agent_bench.catalog import WriterKind, supported_selections
+
+from agent_bench.config import load_configuration
 
 
 SCRIPT = (
@@ -47,10 +51,31 @@ def test_creates_minimal_openai_configuration(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     root = repository / "benchmarks/configurations/opencode-openai-gpt-5-4-mini"
     assert "model: gpt-5.4-mini" in (root / "configuration.yaml").read_text()
+    assert load_configuration(root / "configuration.yaml").agent == "build"
     config = json.loads((root / "harness/opencode.json").read_text())
     assert config["small_model"] == "openai/gpt-5.4-mini"
     assert config["enabled_providers"] == ["openai"]
     assert list((root / "workspace").iterdir()) == []
+
+
+def test_overrides_catalog_default_agent(tmp_path: Path) -> None:
+    repository = scaffold(tmp_path)
+
+    result = run_configure(
+        repository,
+        "--provider",
+        "openai",
+        "--model",
+        "gpt-5.4-mini",
+        "--auth-profile",
+        "openai",
+        "--agent",
+        "review",
+    )
+
+    assert result.returncode == 0, result.stderr
+    root = repository / "benchmarks/configurations/opencode-openai-gpt-5-4-mini"
+    assert load_configuration(root / "configuration.yaml").agent == "review"
 
 
 def test_creates_opencode_go_configuration(tmp_path: Path) -> None:
@@ -121,7 +146,7 @@ def test_creates_amazon_bedrock_configuration(tmp_path: Path) -> None:
         root / "configuration.yaml"
     ).read_text()
     assert "region: eu-central-1" in (root / "configuration.yaml").read_text()
-    assert load_harness(root / "configuration.yaml").region == "eu-central-1"
+    assert load_configuration(root / "configuration.yaml").region == "eu-central-1"
     config = json.loads((root / "harness/opencode.json").read_text())
     assert config["enabled_providers"] == ["amazon-bedrock"]
     assert config["provider"] == {
@@ -162,7 +187,7 @@ def test_amazon_bedrock_configuration_rejects_invalid_region(tmp_path: Path) -> 
     )
 
     assert result.returncode != 0
-    assert "require a valid --bedrock-region" in result.stderr
+    assert "require a valid region" in result.stderr
 
 
 def test_rejects_bedrock_region_for_other_providers(tmp_path: Path) -> None:
@@ -358,7 +383,7 @@ def test_rejects_provider_for_native_copilot(tmp_path: Path) -> None:
     )
 
     assert result.returncode != 0
-    assert "applies only to OpenCode" in result.stderr
+    assert "provider does not apply" in result.stderr
 
 
 def test_refuses_to_overwrite_configuration(tmp_path: Path) -> None:
@@ -435,3 +460,41 @@ def test_copies_approved_skill_for_copilot(tmp_path: Path) -> None:
     root = repository / "benchmarks/configurations/copilot-gpt-5-4-mini"
     assert (root / "workspace/.agents/skills/ponytail/SKILL.md").is_file()
     assert list((root / "harness").iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    ("harness_spec", "provider_spec"),
+    supported_selections(),
+    ids=lambda value: value.id or "providerless",
+)
+def test_catalog_selection_generates_manifest_accepted_by_runtime_loader(
+    tmp_path, harness_spec, provider_spec
+):
+    repository = scaffold(tmp_path)
+    model = "auto" if provider_spec.allow_automatic_model else "model-fixed"
+    arguments = [
+        "--harness",
+        harness_spec.id,
+        "--model",
+        model,
+        "--auth-profile",
+        "work",
+    ]
+    if provider_spec.id is not None:
+        arguments.extend(["--provider", provider_spec.id])
+    if "region" in provider_spec.required_fields:
+        arguments.extend(["--bedrock-region", "us-east-1"])
+
+    result = run_configure(repository, *arguments)
+
+    assert result.returncode == 0, result.stderr
+    config = load_configuration(Path(result.stdout.strip()) / "configuration.yaml")
+    assert config.harness == harness_spec.id
+    assert config.provider == provider_spec.id
+    assert config.model == model
+    assert config.auth_policy is provider_spec.auth_policy
+    native_files = list(config.harness_config.iterdir())
+    if harness_spec.writer is WriterKind.OPENCODE:
+        assert [path.name for path in native_files] == ["opencode.json"]
+    else:
+        assert native_files == []

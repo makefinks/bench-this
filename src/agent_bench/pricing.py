@@ -11,13 +11,6 @@ from .models import ModelPrice
 
 MODELS_DEV_API_URL = "https://models.dev/api.json"
 
-# Harness-auth providers that bill under a different catalog entry. Exact
-# provider lookups always win; aliases only cover providers models.dev does
-# not list itself (e.g. OAuth wrappers around the first-party API).
-PROVIDER_PRICE_ALIASES = {
-    "openai-codex": "openai",
-}
-
 
 class ModelsDevPricing:
     """Fetch the provider catalog once and tolerate unavailable or malformed remote data."""
@@ -54,9 +47,6 @@ class ModelsDevPricing:
         if catalog is None:
             return None
         provider_data = catalog.get(provider)
-        if not isinstance(provider_data, dict):
-            alias = PROVIDER_PRICE_ALIASES.get(provider)
-            provider_data = catalog.get(alias) if alias else None
         if not isinstance(provider_data, dict):
             return None
         models = provider_data.get("models")

@@ -6,29 +6,20 @@ from typing import Any, Dict, Iterable, Mapping, Optional
 
 import yaml
 
+from .catalog import KNOWN_TREATMENT_FIELDS, resolve_selection
 from .errors import ConfigurationError
 from .models import (
     Defaults,
-    HarnessConfig,
     ImageConfig,
     ModelPrice,
     ProjectConfig,
     TaskConfig,
+    TreatmentConfig,
 )
 
 
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 COMMIT_PATTERN = re.compile(r"^[0-9a-fA-F]{7,64}$")
-AMAZON_BEDROCK_PROVIDER = "amazon-bedrock"
-SUPPORTED_OPENCODE_PROVIDERS = {
-    AMAZON_BEDROCK_PROVIDER,
-    "github-copilot",
-    "openai",
-    "opencode",
-    "opencode-go",
-}
-SUPPORTED_OMP_PROVIDERS = {AMAZON_BEDROCK_PROVIDER, "github-copilot", "openai-codex"}
-SUPPORTED_PI_PROVIDERS = {AMAZON_BEDROCK_PROVIDER, "openai-codex"}
 AWS_REGION_PATTERN = re.compile(r"^[a-z]{2}(?:-[a-z0-9]+)+-[0-9]+$")
 
 
@@ -275,41 +266,53 @@ def load_task(path: Path, project: ProjectConfig) -> TaskConfig:
     )
 
 
-def load_harness(path: Path) -> HarnessConfig:
-    """Load one pinned experimental treatment and enforce v1 provider limits."""
+def load_configuration(path: Path) -> TreatmentConfig:
+    """Load one treatment only after its complete catalog schema is valid."""
 
     data = _load_mapping(path)
-    _require(
-        data,
-        ("id", "harness", "model", "harness_config", "workspace_config", "auth_profile"),
-        path,
-    )
+    harness_id = data.get("harness")
+    provider_supplied = "provider" in data
+    provider_id = data.get("provider")
+    try:
+        harness_spec, provider_spec = resolve_selection(
+            harness_id,
+            provider_id,
+            provider_supplied=provider_supplied,
+        )
+    except ValueError as exc:
+        raise ConfigurationError(f"{path}: {exc}") from exc
+    harness_id = harness_spec.id
+    provider_id = provider_spec.id
+
+    selected_fields = harness_spec.allowed_fields | provider_spec.allowed_fields
+    unknown = sorted(str(key) for key in set(data) - KNOWN_TREATMENT_FIELDS)
+    if unknown:
+        raise ConfigurationError(
+            f"{path}: unknown configuration fields: {', '.join(unknown)}"
+        )
+    irrelevant = sorted(str(key) for key in set(data) - selected_fields)
+    if irrelevant:
+        raise ConfigurationError(
+            f"{path}: fields do not apply to {harness_id}/{provider_id}: "
+            + ", ".join(irrelevant)
+        )
+    _require(data, harness_spec.required_fields | provider_spec.required_fields, path)
+
     config_id = _id(data["id"], "configuration id")
     if path.parent.name != config_id:
         raise ConfigurationError(
             f"configuration id {config_id!r} must match directory {path.parent.name!r}"
         )
-    harness = data["harness"]
-    if harness not in {"copilot", "opencode", "omp", "pi"}:
-        raise ConfigurationError(f"{path}: harness must be copilot, omp, opencode, or pi")
     model = data["model"]
-    if not isinstance(model, str) or not model.strip() or model == "auto":
+    if not isinstance(model, str) or not model.strip():
+        raise ConfigurationError(f"{path}: model must be a non-empty string")
+    if model == "auto" and not provider_spec.allow_automatic_model:
         raise ConfigurationError(f"{path}: model must be explicitly pinned")
-    provider = data.get("provider")
-    agent = data.get("agent")
-    if harness in {"opencode", "omp", "pi"}:
-        supported_providers = {
-            "opencode": SUPPORTED_OPENCODE_PROVIDERS,
-            "omp": SUPPORTED_OMP_PROVIDERS,
-            "pi": SUPPORTED_PI_PROVIDERS,
-        }[harness]
-        if provider not in supported_providers:
-            supported = ", ".join(sorted(supported_providers))
-            raise ConfigurationError(f"{harness} provider must be one of: {supported}")
-        if harness == "opencode" and (not isinstance(agent, str) or not agent):
-            raise ConfigurationError("OpenCode configurations require an agent")
+
     arguments = data.get("arguments", [])
-    if not isinstance(arguments, list) or not all(isinstance(item, str) for item in arguments):
+    if not isinstance(arguments, list) or not all(
+        isinstance(item, str) for item in arguments
+    ):
         raise ConfigurationError(f"{path}: arguments must be a list of strings")
     auth_profile = _id(data["auth_profile"], "auth_profile")
     harness_config = _existing_directory(
@@ -320,21 +323,34 @@ def load_harness(path: Path) -> HarnessConfig:
         _relative_path(path.parent, data["workspace_config"], "workspace_config"),
         "workspace_config",
     )
+
+    agent = data.get("agent")
+    if "agent" in selected_fields and (
+        not isinstance(agent, str) or not agent.strip()
+    ):
+        raise ConfigurationError("OpenCode configurations require a non-empty agent")
     region = data.get("region")
-    if provider == AMAZON_BEDROCK_PROVIDER and (
+    if "region" in selected_fields and (
         not isinstance(region, str) or not AWS_REGION_PATTERN.fullmatch(region)
     ):
         raise ConfigurationError(
             f"{path}: Amazon Bedrock configurations require a valid region"
         )
-    return HarnessConfig(
+    github_copilot_business = data.get("github_copilot_business", False)
+    if not isinstance(github_copilot_business, bool):
+        raise ConfigurationError(
+            f"{path}: github_copilot_business must be true or false"
+        )
+
+    return TreatmentConfig(
         root=path.parent,
         id=config_id,
-        harness=harness,
+        harness=harness_id,
         model=model,
-        provider=provider,
+        provider=provider_id,
         agent=agent,
         region=region,
+        github_copilot_business=github_copilot_business,
         harness_config=harness_config,
         workspace_config=workspace_config,
         auth_profile=auth_profile,
@@ -355,12 +371,12 @@ def discover_tasks(project: ProjectConfig) -> Dict[str, TaskConfig]:
     return tasks
 
 
-def discover_harnesses(project: ProjectConfig) -> Dict[str, HarnessConfig]:
+def discover_configurations(project: ProjectConfig) -> Dict[str, TreatmentConfig]:
     """Discover configuration manifests and index them by validated ID."""
 
     config_root = project.benchmark_dir / "configurations"
     configs = {
-        path.parent.name: load_harness(path)
+        path.parent.name: load_configuration(path)
         for path in sorted(config_root.glob("*/configuration.yaml"))
     }
     if not configs:

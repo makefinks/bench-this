@@ -1,22 +1,36 @@
 """Tests for reducing interactive login output to narrowly scoped credentials."""
 
 import json
+import sqlite3
 
 import pytest
 
-from agent_bench.cli import _login, _narrow_opencode_profile
-from agent_bench.errors import ConfigurationError
-from agent_bench.models import HarnessConfig
-from agent_bench.workspace import (
+from agent_bench.auth import (
+    auth_strategy_for,
     BEDROCK_CREDENTIALS_FILE,
     BEDROCK_TOKEN_ENVIRONMENT_VARIABLE,
-    auth_environment,
     PI_AUTH_FILE,
-    stage_home,
-    store_bedrock_api_key,
-    store_omp_credential,
+    login,
+    narrow_opencode_profile,
+    prepare_home,
+    store_bedrock_credential,
     validate_auth_profile,
 )
+from agent_bench.errors import ConfigurationError
+from agent_bench.models import TreatmentConfig
+
+
+def write_omp_auth_database(path, provider):
+    path.parent.mkdir(parents=True)
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "CREATE TABLE auth_credentials ("
+            "provider TEXT, credential_type TEXT, disabled_cause TEXT)"
+        )
+        connection.execute(
+            "INSERT INTO auth_credentials VALUES (?, 'oauth', NULL)",
+            (provider,),
+        )
 
 
 def test_narrow_opencode_profile_removes_unrelated_state(tmp_path):
@@ -38,7 +52,7 @@ def test_narrow_opencode_profile_removes_unrelated_state(tmp_path):
     plugin.parent.mkdir(parents=True)
     plugin.symlink_to("../plugin/index.js")
 
-    _narrow_opencode_profile(profile, "openai")
+    narrow_opencode_profile(profile, "openai")
 
     assert json.loads(auth.read_text(encoding="utf-8")) == {
         "openai": {"type": "oauth", "access": "fixture"}
@@ -56,7 +70,7 @@ def test_validate_opencode_profile_rejects_login_state(tmp_path):
     cache = profile / ".cache/opencode/state"
     cache.parent.mkdir(parents=True)
     cache.write_text("unexpected", encoding="utf-8")
-    config = HarnessConfig(
+    config = TreatmentConfig(
         root=tmp_path,
         id="openai",
         harness="opencode",
@@ -77,7 +91,7 @@ def bedrock_config(tmp_path):
     root = tmp_path / "configuration"
     (root / "harness").mkdir(parents=True)
     (root / "workspace").mkdir()
-    return HarnessConfig(
+    return TreatmentConfig(
         root=root,
         id="bedrock",
         harness="opencode",
@@ -93,18 +107,19 @@ def bedrock_config(tmp_path):
 
 def test_bedrock_profile_injects_token_without_staging_secret_file(tmp_path):
     auth_root = tmp_path / "auth"
-    profile = store_bedrock_api_key("bedrock", "fixture-token", auth_root)
+    profile = store_bedrock_credential(
+        "bedrock", "opencode", "fixture-token", auth_root
+    )
     config = bedrock_config(tmp_path)
 
     assert profile.stat().st_mode & 0o777 == 0o700
     credential = profile / BEDROCK_CREDENTIALS_FILE
     assert credential.stat().st_mode & 0o777 == 0o600
-    assert auth_environment(config, auth_root) == {
+    prepared = prepare_home(config, tmp_path / "home", auth_root)
+    home = prepared.home
+    assert dict(prepared.secret_environment) == {
         BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"
     }
-
-    home = tmp_path / "home"
-    stage_home(config, home, auth_root)
     assert not (home / BEDROCK_CREDENTIALS_FILE).exists()
 
 
@@ -129,19 +144,15 @@ def test_bedrock_profile_rejects_broadened_or_invalid_credentials(tmp_path):
 def test_bedrock_login_stores_runner_managed_token(tmp_path, monkeypatch):
     auth_root = tmp_path / "auth"
     monkeypatch.setattr(
-        "agent_bench.cli.auth_profile_root",
-        lambda profile, harness: auth_root / profile / harness,
+        "agent_bench.auth.auth_profile_root",
+        lambda profile, harness, _root=None: auth_root / profile / harness,
     )
     monkeypatch.setattr(
-        "agent_bench.workspace.auth_profile_root",
-        lambda profile, harness, auth_root=None: (
-            tmp_path / "auth" / profile / harness
-        ),
+        "agent_bench.auth.getpass.getpass", lambda _prompt: "fixture-token"
     )
-    monkeypatch.setattr("agent_bench.cli.getpass.getpass", lambda _prompt: "fixture-token")
     project = type("Project", (), {"image": type("Image", (), {"name": "unused"})()})()
 
-    _login(project, "opencode", "bedrock", "amazon-bedrock")
+    login(project, "opencode", "bedrock", "amazon-bedrock")
 
     credentials = json.loads(
         (
@@ -158,7 +169,7 @@ def test_omp_bedrock_profile_injects_only_selected_provider_token(tmp_path):
     root = tmp_path / "configuration"
     (root / "harness").mkdir(parents=True)
     (root / "workspace").mkdir()
-    config = HarnessConfig(
+    config = TreatmentConfig(
         root=root,
         id="omp-codex",
         harness="omp",
@@ -170,34 +181,33 @@ def test_omp_bedrock_profile_injects_only_selected_provider_token(tmp_path):
         arguments=[],
     )
 
-    profile = store_omp_credential(
-        "bedrock", "amazon-bedrock", "fixture-token", auth_root
+    profile = store_bedrock_credential(
+        "bedrock", "omp", "fixture-token", auth_root
     )
 
-    config = HarnessConfig(**{**config.__dict__, "auth_profile": "bedrock"})
+    config = TreatmentConfig(**{**config.__dict__, "auth_profile": "bedrock"})
     credentials = json.loads(
         (profile / BEDROCK_CREDENTIALS_FILE).read_text(encoding="utf-8")
     )
     assert credentials == {BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"}
-    assert auth_environment(auth_root=auth_root, config=config) == {
+    prepared = prepare_home(config, tmp_path / "home", auth_root)
+    home = prepared.home
+    assert dict(prepared.secret_environment) == {
         BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"
     }
-    home = tmp_path / "home"
-    stage_home(config, home, auth_root)
     assert not (home / ".omp/agent/agent.db").exists()
     assert not (home / "credentials.json").exists()
 
 
 def test_omp_oauth_profile_stages_native_database_without_environment_token(tmp_path):
     auth_root = tmp_path / "auth"
-    profile = auth_root / "codex" / "omp" / ".omp" / "agent"
-    profile.mkdir(parents=True)
-    (profile / "agent.db").write_bytes(b"fixture-database")
+    database = auth_root / "codex" / "omp" / ".omp" / "agent" / "agent.db"
+    write_omp_auth_database(database, "openai-codex")
     root = tmp_path / "configuration"
     (root / "harness").mkdir(parents=True)
     (root / "workspace").mkdir()
     (root / "harness/config.yaml").write_text("theme: fixture\n", encoding="utf-8")
-    config = HarnessConfig(
+    config = TreatmentConfig(
         root=root,
         id="omp-codex",
         harness="omp",
@@ -209,10 +219,10 @@ def test_omp_oauth_profile_stages_native_database_without_environment_token(tmp_
         arguments=[],
     )
 
-    assert auth_environment(auth_root=auth_root, config=config) == {}
-    home = tmp_path / "home"
-    stage_home(config, home, auth_root)
-    assert (home / ".omp/agent/agent.db").read_bytes() == b"fixture-database"
+    prepared = prepare_home(config, tmp_path / "home", auth_root)
+    home = prepared.home
+    assert dict(prepared.secret_environment) == {}
+    assert (home / ".omp/agent/agent.db").read_bytes() == database.read_bytes()
     assert (home / ".omp/agent/config.yaml").read_text(encoding="utf-8") == "theme: fixture\n"
     assert not (home / ".omp/config.yaml").exists()
 
@@ -221,7 +231,7 @@ def pi_config(tmp_path, provider="openai-codex"):
     root = tmp_path / "pi-configuration"
     (root / "harness").mkdir(parents=True)
     (root / "workspace").mkdir()
-    return HarnessConfig(
+    return TreatmentConfig(
         root=root,
         id=f"pi-{provider}",
         harness="pi",
@@ -259,9 +269,9 @@ def test_pi_codex_oauth_profile_stages_only_native_auth_file(tmp_path):
     config = pi_config(tmp_path)
 
     assert validate_auth_profile(config, auth_root) == auth_root / "pi-auth" / "pi"
-    assert auth_environment(config, auth_root) == {}
-    home = tmp_path / "pi-home"
-    stage_home(config, home, auth_root)
+    prepared = prepare_home(config, tmp_path / "pi-home", auth_root)
+    home = prepared.home
+    assert dict(prepared.secret_environment) == {}
     assert json.loads((home / PI_AUTH_FILE).read_text(encoding="utf-8")) == {
         "openai-codex": {
             "type": "oauth",
@@ -276,11 +286,11 @@ def test_pi_codex_oauth_profile_stages_only_native_auth_file(tmp_path):
 
 def test_pi_bedrock_bearer_profile_injects_token_without_staging_secret_file(tmp_path):
     auth_root = tmp_path / "auth"
-    profile = store_bedrock_api_key(
+    profile = store_bedrock_credential(
         "pi-auth",
+        "pi",
         "fixture-token",
         auth_root,
-        harness="pi",
     )
     config = pi_config(tmp_path, "amazon-bedrock")
 
@@ -288,12 +298,11 @@ def test_pi_bedrock_bearer_profile_injects_token_without_staging_secret_file(tmp
     credentials = profile / BEDROCK_CREDENTIALS_FILE
     assert credentials.stat().st_mode & 0o777 == 0o600
     assert validate_auth_profile(config, auth_root) == profile
-    assert auth_environment(config, auth_root) == {
+    prepared = prepare_home(config, tmp_path / "pi-bedrock-home", auth_root)
+    assert dict(prepared.secret_environment) == {
         BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"
     }
-
-    home = tmp_path / "pi-bedrock-home"
-    stage_home(config, home, auth_root)
+    home = prepared.home
     assert not (home / BEDROCK_CREDENTIALS_FILE).exists()
 
     (profile / "unexpected").write_text("fixture", encoding="utf-8")
@@ -309,18 +318,15 @@ def test_pi_bedrock_bearer_profile_injects_token_without_staging_secret_file(tmp
 def test_pi_bedrock_login_stores_runner_managed_token(tmp_path, monkeypatch):
     auth_root = tmp_path / "auth"
     monkeypatch.setattr(
-        "agent_bench.cli.auth_profile_root",
-        lambda profile, harness: auth_root / profile / harness,
+        "agent_bench.auth.auth_profile_root",
+        lambda profile, harness, _root=None: auth_root / profile / harness,
     )
     monkeypatch.setattr(
-        "agent_bench.workspace.auth_profile_root",
-        lambda profile, harness, auth_root=None: tmp_path / "auth" / profile / harness,
+        "agent_bench.auth.getpass.getpass", lambda _prompt: "fixture-api-key"
     )
-    supplied = iter(("fixture-api-key",))
-    monkeypatch.setattr("agent_bench.cli.getpass.getpass", lambda _prompt: next(supplied))
     project = type("Project", (), {"image": type("Image", (), {"name": "unused"})()})()
 
-    _login(project, "pi", "bedrock", "amazon-bedrock")
+    login(project, "pi", "bedrock", "amazon-bedrock")
 
     credentials = json.loads(
         (auth_root / "bedrock" / "pi" / BEDROCK_CREDENTIALS_FILE).read_text(
@@ -332,12 +338,20 @@ def test_pi_bedrock_login_stores_runner_managed_token(tmp_path, monkeypatch):
 def test_login_rejects_provider_not_supported_by_selected_harness(tmp_path, monkeypatch):
     destination = tmp_path / "auth"
     monkeypatch.setattr(
-        "agent_bench.cli.auth_profile_root",
-        lambda profile, harness: destination / profile / harness,
+        "agent_bench.auth.auth_profile_root",
+        lambda profile, harness, auth_root=None: destination / profile / harness,
     )
     project = type("Project", (), {"image": type("Image", (), {"name": "unused"})()})()
 
-    with pytest.raises(ConfigurationError, match="OpenCode login requires --provider"):
-        _login(project, "opencode", "work", "openai-codex")
+    with pytest.raises(ConfigurationError, match="opencode provider must be one of"):
+        login(project, "opencode", "work", "openai-codex")
 
     assert not destination.exists()
+
+
+def test_missing_auth_strategy_registration_fails_closed(tmp_path, monkeypatch):
+    config = bedrock_config(tmp_path)
+    monkeypatch.setattr("agent_bench.auth.AUTH_STRATEGIES", {})
+
+    with pytest.raises(ConfigurationError, match="unregistered authentication policy"):
+        auth_strategy_for(config)
