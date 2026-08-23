@@ -174,6 +174,7 @@ def test_preflight_happens_before_source_and_hidden_tests_follow_solver(tmp_path
     assert result.output_tokens == 2
     assert result.reasoning_tokens == 2
     assert result.cache_read_tokens == 3
+    assert result.turns == 1
     assert Path(result.log_directory, "solver.telemetry.jsonl").is_file()
     assert result.experiment_id.startswith("experiment-")
     assert result.run_id.startswith("demo--copilot--r1--")

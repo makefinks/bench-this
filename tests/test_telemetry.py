@@ -88,6 +88,7 @@ def test_omp_includes_task_tool_subagent_usage():
     assert usage.cache_read_tokens == 8
     assert usage.cache_write_tokens == 3
     assert usage.native_cost_usd == 0.03
+    assert usage.turns == 1
 
 
 def test_omp_includes_task_usage_when_agent_end_is_missing():
@@ -143,3 +144,50 @@ def test_omp_transcript_falls_back_to_generic_parser_without_agent_end():
     assert usage.reasoning_tokens == 5
     assert usage.cache_read_tokens == 12
     assert usage.cache_write_tokens == 3
+
+
+def test_normalizes_completed_main_turns_for_each_protocol():
+    copilot_spans = parse_usage(
+        '{"attributes":{"gen_ai.operation.name":"chat"}}\n'
+        '{"attributes":{"gen_ai.operation.name":"chat"}}'
+    )
+    copilot_aggregate = parse_usage(
+        '{"attributes":{"gen_ai.operation.name":"chat"}}\n'
+        '{"type":"session.shutdown","data":{"modelMetrics":{"model":'
+        '{"requests":{"count":3}}}}}'
+    )
+    opencode = parse_usage(
+        '{"type":"step_start"}\n'
+        '{"type":"step_finish","part":{"reason":"tool-calls"}}\n'
+        '{"type":"step_start"}\n'
+        '{"type":"step_finish","part":{"reason":"stop"}}'
+    )
+    pi = parse_pi_transcript(
+        '{"type":"message_end","message":{"role":"assistant",'
+        '"usage":{"input":1,"output":1}}}\n'
+        '{"type":"turn_end","message":{"role":"assistant",'
+        '"usage":{"input":1,"output":1}}}\n'
+        '{"type":"agent_end","messages":[{"role":"assistant",'
+        '"usage":{"input":1,"output":1}}]}'
+    )
+
+    assert copilot_spans.turns == 2
+    assert copilot_aggregate.turns == 3
+    assert opencode.turns == 2
+    assert pi.turns == 1
+
+
+def test_does_not_count_incomplete_model_cycles():
+    opencode = parse_usage('{"type":"step_start"}')
+    copilot = parse_usage(
+        '{"attributes":{"gen_ai.operation.name":"chat"},'
+        '"status":{"code":"ERROR"}}'
+    )
+    pi = parse_pi_transcript(
+        '{"type":"agent_end","messages":[{"role":"assistant",'
+        '"stopReason":"aborted","usage":{"input":2,"output":1}}]}'
+    )
+
+    assert opencode.turns == 0
+    assert copilot.turns == 0
+    assert pi.turns == 0

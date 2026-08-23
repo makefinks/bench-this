@@ -536,6 +536,7 @@ class BenchmarkRunner:
                     cache_write_tokens=usage.cache_write_tokens,
                     native_cost_usd=usage.native_cost_usd,
                     estimated_cost_usd=self._estimate(config, usage),
+                    turns=usage.turns,
                     failure_kind=(
                         "solver"
                         if solver_error
@@ -579,6 +580,7 @@ class BenchmarkRunner:
                 cache_write_tokens=usage.cache_write_tokens,
                 native_cost_usd=usage.native_cost_usd,
                 estimated_cost_usd=self._estimate(config, usage),
+                turns=usage.turns,
                 failure_kind=self._failure_kind(exc, phase),
                 error=str(exc),
                 public_test_mutation_detected=public_test_mutation_detected,

@@ -481,9 +481,23 @@ The runner keeps failure kinds distinct so a broken environment never counts as 
 - **infrastructure and phase failures**: setup, authentication, model identity, Docker, evaluator
   errors, timeouts, and quota failures remain identifiable rather than becoming wrong answers.
 
-The summary reports pass rate, public and hidden completion, their combined total, public-test
-mutation telemetry, total/input/cached-input/cache-write/output/reasoning tokens, cache hit rate
-when cached input is present, solver and total runtime, costs when known, and failure counts.
+The summary reports:
+
+- pass rate and public, hidden, and combined completion;
+- public-test mutation telemetry;
+- main-session turn averages;
+- total, input, cached-input, cache-write, output, and reasoning tokens;
+- cache hit rate when cached input is present;
+- solver and total runtime;
+- native and estimated costs when known;
+- failure counts.
+
+Turn metrics have these semantics:
+
+- **Turns** count completed model cycles in the harness's main solver session. Delegated or
+  subagent activity is excluded.
+- **Averages** use successful runs only. An em dash means the count is unavailable.
+
 Provider-reported cost remains separate from locally estimated cost. The runner uses
 benchmark-defined `prices` first, then falls back to the live
 [Models.dev](https://models.dev/) provider catalog. Native Copilot CLI runs export content-free

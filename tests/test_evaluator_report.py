@@ -5,7 +5,7 @@ import pytest
 from agent_bench.errors import InfrastructureError
 from agent_bench.evaluator import RESULT_PREFIX, parse_evaluator_report, validate_evaluator_exit
 from agent_bench.models import RunResult
-from agent_bench.report import write_summary
+from agent_bench.report import read_results, write_summary
 
 
 def report(groups, candidate_error=False):
@@ -68,6 +68,7 @@ def test_summary_reports_deterministic_group_completion(tmp_path) -> None:
             cache_read_tokens=10,
             cache_write_tokens=3,
             estimated_cost_usd=0.1,
+            turns=2,
         ),
         RunResult(
             "two",
@@ -84,6 +85,7 @@ def test_summary_reports_deterministic_group_completion(tmp_path) -> None:
             cache_read_tokens=20,
             cache_write_tokens=4,
             estimated_cost_usd=0.2,
+            turns=4,
         ),
     ]
 
@@ -102,16 +104,19 @@ def test_summary_reports_deterministic_group_completion(tmp_path) -> None:
     assert "Avg tokens" not in summary
     assert (
         "| model | one | 0/1 | 1/1 (100.0%) | 1/2 (50.0%) | 2/3 (66.7%) | "
-        "138 | 100 | 10 | 3 | 20 | 5 | 9.1% | $0.1000 estimated | 2.0s | 1.0s | "
+        "— | 138 | 100 | 10 | 3 | 20 | 5 | 9.1% | $0.1000 estimated | "
+        "2.0s | 1.0s | "
         "incorrect: 1 |"
     ) in summary
     assert (
         "| model | two | 1/1 | 1/1 (100.0%) | 1/1 (100.0%) | 2/2 (100.0%) | "
-        "261 | 200 | 20 | 4 | 30 | 7 | 9.1% | $0.2000 estimated | — | 1.0s | — |"
+        "4.0 | 261 | 200 | 20 | 4 | 30 | 7 | 9.1% | "
+        "$0.2000 estimated | — | 1.0s | — |"
     ) in summary
     aggregate = (
         "| model | 1/2 | 50.0% | 2/2 (100.0%) | 2/3 (66.7%) | "
-        "4/5 (80.0%) | 1/2 | 399 | 300 | 30 | 7 | 50 | 12 | 9.1% |"
+        "4/5 (80.0%) | 1/2 | 4.0 | 399 | 300 | 30 | 7 | 50 | 12 | "
+        "9.1% |"
     )
     assert summary.count(aggregate) == 2
     assert summary.count("### Configuration summary") == 2
@@ -142,4 +147,42 @@ def test_summary_omits_cache_hit_rate_without_cached_input(tmp_path) -> None:
 
     summary = path.read_text()
 
-    assert "| 120 | 100 | 0 | 0 | 20 | — | — |" in summary
+    assert "| — | 120 | 100 | 0 | 0 | 20 | — | — |" in summary
+
+
+def test_historical_results_default_turn_fields_to_unknown(tmp_path) -> None:
+    path = tmp_path / "runs.jsonl"
+    path.write_text(
+        json.dumps(
+            {
+                "task": "one",
+                "configuration": "model",
+                "repetition": 1,
+                "passed": True,
+                "duration_seconds": 1.0,
+            }
+        )
+        + "\n"
+    )
+
+    [row] = read_results(path)
+
+    assert row.turns is None
+
+
+def test_summary_averages_turns_for_successful_runs_only(tmp_path) -> None:
+    path = tmp_path / "summary.md"
+    write_summary(
+        path,
+        "experiment-one",
+        [
+            RunResult("one", "model", 1, True, 1.0, turns=2),
+            RunResult("two", "model", 1, True, 1.0, turns=4),
+            RunResult("three", "model", 1, False, 1.0, turns=100),
+        ],
+    )
+
+    summary = path.read_text()
+
+    assert "| model | 2/3 | 66.7% |" in summary
+    assert "| 3.0 | 0 |" in summary

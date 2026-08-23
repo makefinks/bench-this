@@ -87,14 +87,76 @@ def _usage_from_mapping(value: Dict[str, Any]) -> Tuple[int, int, int, int, int]
     )
 
 
-def parse_usage(text: str) -> Usage:
-    """Aggregate per-turn usage while treating zero reported cost as unknown."""
+def _generic_turns(events: List[Any]) -> Optional[int]:
+    """Count completed main-session cycles from OpenCode or Copilot telemetry."""
 
+    shutdown_counts = []
+    for event in events:
+        for mapping in _walk(event):
+            if mapping.get("type") != "session.shutdown":
+                continue
+            data = mapping.get("data")
+            metrics = data.get("modelMetrics") if isinstance(data, dict) else None
+            if not isinstance(metrics, dict):
+                continue
+            count = 0
+            valid = True
+            for model_metrics in metrics.values():
+                requests = (
+                    model_metrics.get("requests")
+                    if isinstance(model_metrics, dict)
+                    else None
+                )
+                value = requests.get("count") if isinstance(requests, dict) else None
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    valid = False
+                    break
+                count += max(int(value), 0)
+            if valid:
+                shutdown_counts.append(count)
+    if shutdown_counts:
+        # Copilot may also emit one OTel span per request; its shutdown aggregate is
+        # authoritative and prevents counting both representations.
+        return shutdown_counts[-1]
+
+    opencode_seen = False
+    opencode_turns = 0
+    otel_seen = False
+    otel_turns = 0
+    for event in events:
+        if isinstance(event, dict) and isinstance(event.get("type"), str):
+            event_type = event["type"]
+            if event_type.startswith("step_"):
+                opencode_seen = True
+            if event_type == "step_finish":
+                opencode_turns += 1
+        for mapping in _walk(event):
+            attributes = mapping.get("attributes")
+            if not isinstance(attributes, dict) or "gen_ai.operation.name" not in attributes:
+                continue
+            otel_seen = True
+            if attributes.get("gen_ai.operation.name") != "chat":
+                continue
+            status = mapping.get("status")
+            status_code = status.get("code") if isinstance(status, dict) else None
+            if status_code not in {"ERROR", 2}:
+                otel_turns += 1
+    if opencode_seen:
+        return opencode_turns
+    if otel_seen:
+        return otel_turns
+    return None
+
+
+def parse_usage(text: str) -> Usage:
+    """Aggregate usage and completed turns while treating zero cost as unknown."""
+
+    events = parse_json_events(text)
     input_tokens = output_tokens = reasoning_tokens = 0
     cache_read_tokens = cache_write_tokens = 0
     reasoning_seen = False
     costs = []
-    for event in parse_json_events(text):
+    for event in events:
         for mapping in _walk(event):
             for key in ("tokens", "usage"):
                 values = mapping.get(key)
@@ -165,6 +227,7 @@ def parse_usage(text: str) -> Usage:
         cache_read_tokens=cache_read_tokens,
         cache_write_tokens=cache_write_tokens,
         native_cost_usd=sum(costs) if costs else None,
+        turns=_generic_turns(events),
     )
 
 
@@ -213,12 +276,15 @@ def parse_pi_transcript(text: str) -> Usage:
     cache_read_tokens = cache_write_tokens = 0
     reasoning_seen = False
     costs = []
+    turns = 0
     for message in messages:
         if not isinstance(message, dict):
             continue
         usages = []
         if message.get("role") == "assistant" and isinstance(message.get("usage"), dict):
             usages.append(message["usage"])
+            if message.get("stopReason") not in {"error", "aborted"}:
+                turns += 1
         if message.get("role") == "toolResult" and message.get("toolName") == "task":
             details = message.get("details")
             if isinstance(details, dict) and isinstance(details.get("usage"), dict):
@@ -245,6 +311,7 @@ def parse_pi_transcript(text: str) -> Usage:
         cache_read_tokens=cache_read_tokens,
         cache_write_tokens=cache_write_tokens,
         native_cost_usd=sum(costs) if costs else None,
+        turns=turns,
     )
 
 

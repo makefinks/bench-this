@@ -148,7 +148,7 @@ class TreatmentConfig:
 
 @dataclass(frozen=True)
 class Usage:
-    """Normalized token and native-cost telemetry from either harness."""
+    """Normalized token, cost, and completed-turn telemetry from any harness."""
 
     input_tokens: int = 0
     output_tokens: int = 0
@@ -156,6 +156,7 @@ class Usage:
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
     native_cost_usd: Optional[float] = None
+    turns: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -189,6 +190,7 @@ class RunResult:
     cache_write_tokens: int = 0
     native_cost_usd: Optional[float] = None
     estimated_cost_usd: Optional[float] = None
+    turns: Optional[int] = None
     failure_kind: Optional[str] = None
     error: Optional[str] = None
     group_results: Dict[str, bool] = field(default_factory=dict)
