@@ -5,7 +5,7 @@ from collections import Counter, defaultdict
 from dataclasses import asdict
 from pathlib import Path
 from statistics import mean
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Sequence
 
 from .models import RunResult
 
@@ -91,8 +91,46 @@ def _token_metrics(values: Iterable[RunResult]) -> Dict[str, object]:
     }
 
 
+def _render_table(
+    headers: Sequence[str],
+    rows: Iterable[Sequence[str]],
+    alignments: Sequence[str],
+) -> List[str]:
+    """Render a padded Markdown table while preserving its column alignments."""
+
+    header_cells = list(headers)
+    body = [list(row) for row in rows]
+    if len(header_cells) != len(alignments):
+        raise ValueError("table headers and alignments must have the same length")
+    if any(len(row) != len(header_cells) for row in body):
+        raise ValueError("table rows must have the same length as the headers")
+
+    table_rows = [header_cells, *body]
+    widths = []
+    for column, alignment in enumerate(alignments):
+        minimum = 5 if alignment == "center" else 4 if alignment in {"left", "right"} else 3
+        widths.append(max(minimum, *(len(row[column]) for row in table_rows)))
+
+    def render(cells: Sequence[str]) -> str:
+        """Pad cells so the generated source is readable before Markdown rendering."""
+
+        return "| " + " | ".join(cell.ljust(width) for cell, width in zip(cells, widths)) + " |"
+
+    separator = []
+    for width, alignment in zip(widths, alignments):
+        if alignment == "left":
+            separator.append(":" + "-" * (width - 1))
+        elif alignment == "right":
+            separator.append("-" * (width - 1) + ":")
+        elif alignment == "center":
+            separator.append(":" + "-" * (width - 2) + ":")
+        else:
+            separator.append("-" * width)
+    return [render(header_cells), render(separator), *(render(row) for row in body)]
+
+
 def write_summary(path: Path, experiment_id: str, rows: Iterable[RunResult]) -> None:
-    """Append one treatment summary without discarding earlier experiments."""
+    """Append one padded treatment summary without discarding earlier experiments."""
 
     groups: Dict[tuple, List[RunResult]] = defaultdict(list)
     task_groups: Dict[tuple, List[RunResult]] = defaultdict(list)
@@ -106,9 +144,8 @@ def write_summary(path: Path, experiment_id: str, rows: Iterable[RunResult]) -> 
         "",
         "### Configuration summary",
         "",
-        "| Configuration | Passed | Pass rate | Public | Hidden | Overall | Public tests modified | Avg turns | Total tokens | Input tokens | Cached input tokens | Cache write tokens | Output tokens | Reasoning tokens | Cache hit rate | Native cost | Estimated cost | Cost / success | Avg solver time | Avg runtime | Failures |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
+    configuration_rows: List[List[str]] = []
     for (config_id, config_digest), values in sorted(
         groups.items(), key=lambda item: (item[0][0], item[0][1] or "")
     ):
@@ -153,51 +190,63 @@ def write_summary(path: Path, experiment_id: str, rows: Iterable[RunResult]) -> 
             if row.solver_duration_seconds is not None
         ]
         solver_runtime = f"{mean(solver_durations):.1f}s" if solver_durations else "—"
-        lines.append(
-            "| {config} | {passed}/{total} | {rate:.1%} | {public} | {hidden} | {overall} | "
-            "{mutations} | {turns} | {total_tokens:,} | {input_tokens:,} | "
-            "{cached_input_tokens:,} | "
-            "{cache_write_tokens:,} | {output_tokens:,} | {reasoning_tokens} | "
-            "{cache_hit_rate} | {native} | "
-            "{estimated} | {per_success} | {solver_runtime} | {runtime:.1f}s | {failures} |".format(
-                config=(
-                    f"{config_id}@{config_digest[:12]}"
-                    if config_digest
-                    else config_id
-                ),
-                passed=passed,
-                total=len(values),
-                rate=passed / len(values),
-                public=public_score,
-                hidden=hidden_score,
-                overall=overall_score,
-                mutations=mutation_score,
-                turns=_average_turns(values),
-                total_tokens=metrics["total"],
-                input_tokens=metrics["input"],
-                cached_input_tokens=metrics["cached_input"],
-                cache_write_tokens=metrics["cache_write"],
-                output_tokens=metrics["output"],
-                reasoning_tokens=metrics["reasoning"],
-                cache_hit_rate=metrics["cache_hit_rate"],
-                native=_money(native) if native else "—",
-                estimated=_money(estimated) if estimated else "—",
-                per_success=_money(known_cost / passed) if passed and known_cost else "—",
-                solver_runtime=solver_runtime,
-                runtime=mean(row.duration_seconds for row in values),
-                failures=failures,
-            )
+        configuration_rows.append(
+            [
+                f"{config_id}@{config_digest[:12]}" if config_digest else config_id,
+                f"{passed}/{len(values)}",
+                f"{passed / len(values):.1%}",
+                public_score,
+                hidden_score,
+                overall_score,
+                mutation_score,
+                _average_turns(values),
+                f"{metrics['total']:,}",
+                f"{metrics['input']:,}",
+                f"{metrics['cached_input']:,}",
+                f"{metrics['cache_write']:,}",
+                f"{metrics['output']:,}",
+                str(metrics["reasoning"]),
+                str(metrics["cache_hit_rate"]),
+                _money(native) if native else "—",
+                _money(estimated) if estimated else "—",
+                _money(known_cost / passed) if passed and known_cost else "—",
+                solver_runtime,
+                f"{mean(row.duration_seconds for row in values):.1f}s",
+                failures,
+            ]
         )
 
     lines.extend(
-        [
-            "",
-            "### Task results",
-            "",
-            "| Configuration | Task | Passed | Public | Hidden | Overall | Avg turns | Total tokens | Input tokens | Cached input tokens | Cache write tokens | Output tokens | Reasoning tokens | Cache hit rate | Cost | Avg solver time | Avg runtime | Failures |",
-            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
-        ]
+        _render_table(
+            [
+                "Configuration",
+                "Passed",
+                "Pass rate",
+                "Public",
+                "Hidden",
+                "Overall",
+                "Public tests modified",
+                "Avg turns",
+                "Total tokens",
+                "Input tokens",
+                "Cached input tokens",
+                "Cache write tokens",
+                "Output tokens",
+                "Reasoning tokens",
+                "Cache hit rate",
+                "Native cost",
+                "Estimated cost",
+                "Cost / success",
+                "Avg solver time",
+                "Avg runtime",
+                "Failures",
+            ],
+            configuration_rows,
+            ["default"] + ["right"] * 19 + ["default"],
+        )
     )
+    lines.extend(["", "### Task results", ""])
+    task_rows: List[List[str]] = []
     for (config_id, config_digest, task_id), values in sorted(
         task_groups.items(), key=lambda item: (item[0][0], item[0][1] or "", item[0][2])
     ):
@@ -229,42 +278,58 @@ def write_summary(path: Path, experiment_id: str, rows: Iterable[RunResult]) -> 
         failures = Counter(
             row.failure_kind or "incorrect" for row in values if not row.passed
         )
-        lines.append(
-            "| {config} | {task} | {passed}/{total} | {public} | {hidden} | {overall} | "
-            "{turns} | {total_tokens:,} | {input_tokens:,} | {cached_input_tokens:,} | "
-            "{cache_write_tokens:,} | {output_tokens:,} | {reasoning_tokens} | "
-            "{cache_hit_rate} | {cost} | {solver_runtime} | "
-            "{runtime:.1f}s | {failures} |".format(
-                config=(
-                    f"{config_id}@{config_digest[:12]}"
-                    if config_digest
-                    else config_id
-                ),
-                task=task_id,
-                passed=sum(row.passed for row in values),
-                total=len(values),
-                public=public_score,
-                hidden=hidden_score,
-                overall=overall_score,
-                turns=_average_turns(values),
-                total_tokens=metrics["total"],
-                input_tokens=metrics["input"],
-                cached_input_tokens=metrics["cached_input"],
-                cache_write_tokens=metrics["cache_write"],
-                output_tokens=metrics["output"],
-                reasoning_tokens=metrics["reasoning"],
-                cache_hit_rate=metrics["cache_hit_rate"],
-                cost=cost,
-                solver_runtime=(
-                    f"{mean(solver_durations):.1f}s" if solver_durations else "—"
-                ),
-                runtime=mean(row.duration_seconds for row in values),
-                failures=", ".join(
+        task_rows.append(
+            [
+                f"{config_id}@{config_digest[:12]}" if config_digest else config_id,
+                task_id,
+                f"{sum(row.passed for row in values)}/{len(values)}",
+                public_score,
+                hidden_score,
+                overall_score,
+                _average_turns(values),
+                f"{metrics['total']:,}",
+                f"{metrics['input']:,}",
+                f"{metrics['cached_input']:,}",
+                f"{metrics['cache_write']:,}",
+                f"{metrics['output']:,}",
+                str(metrics["reasoning"]),
+                str(metrics["cache_hit_rate"]),
+                cost,
+                f"{mean(solver_durations):.1f}s" if solver_durations else "—",
+                f"{mean(row.duration_seconds for row in values):.1f}s",
+                ", ".join(
                     f"{name}: {count}" for name, count in sorted(failures.items())
                 )
                 or "—",
-            )
+            ]
         )
+
+    lines.extend(
+        _render_table(
+            [
+                "Configuration",
+                "Task",
+                "Passed",
+                "Public",
+                "Hidden",
+                "Overall",
+                "Avg turns",
+                "Total tokens",
+                "Input tokens",
+                "Cached input tokens",
+                "Cache write tokens",
+                "Output tokens",
+                "Reasoning tokens",
+                "Cache hit rate",
+                "Cost",
+                "Avg solver time",
+                "Avg runtime",
+                "Failures",
+            ],
+            task_rows,
+            ["default", "default"] + ["right"] * 15 + ["default"],
+        )
+    )
     if not groups:
         lines.extend(["", "No runs recorded."])
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -13,6 +13,38 @@ def report(groups, candidate_error=False):
     return RESULT_PREFIX + json.dumps(payload) + "\n"
 
 
+def _cells(line):
+    """Split a generated table row for value-focused report assertions."""
+
+    return [cell.strip() for cell in line[1:-1].split("|")]
+
+
+def _data_rows(summary, columns):
+    return [
+        cells
+        for line in summary.splitlines()
+        if line.startswith("| model")
+        for cells in [_cells(line)]
+        if len(cells) == columns
+    ]
+
+
+def _table_blocks(summary, heading):
+    lines = summary.splitlines()
+    blocks = []
+    for index, line in enumerate(lines):
+        if line != heading:
+            continue
+        block = []
+        for candidate in lines[index + 1 :]:
+            if candidate.startswith("|"):
+                block.append(candidate)
+            elif block:
+                break
+        blocks.append(block)
+    return blocks
+
+
 def test_group_report_preserves_manifest_order_and_candidate_error() -> None:
     parsed = parse_evaluator_report(
         "diagnostic\n" + report({"second": False, "first": True}, True),
@@ -102,29 +134,85 @@ def test_summary_reports_deterministic_group_completion(tmp_path) -> None:
         "Output tokens | Reasoning tokens | Cache hit rate |"
     ) in summary
     assert "Avg tokens" not in summary
-    assert (
-        "| model | one | 0/1 | 1/1 (100.0%) | 1/2 (50.0%) | 2/3 (66.7%) | "
-        "— | 138 | 100 | 10 | 3 | 20 | 5 | 9.1% | $0.1000 estimated | "
-        "2.0s | 1.0s | "
-        "incorrect: 1 |"
-    ) in summary
-    assert (
-        "| model | two | 1/1 | 1/1 (100.0%) | 1/1 (100.0%) | 2/2 (100.0%) | "
-        "4.0 | 261 | 200 | 20 | 4 | 30 | 7 | 9.1% | "
-        "$0.2000 estimated | — | 1.0s | — |"
-    ) in summary
-    aggregate = (
-        "| model | 1/2 | 50.0% | 2/2 (100.0%) | 2/3 (66.7%) | "
-        "4/5 (80.0%) | 1/2 | 4.0 | 399 | 300 | 30 | 7 | 50 | 12 | "
-        "9.1% |"
-    )
-    assert summary.count(aggregate) == 2
+    configuration_rows = _data_rows(summary, 21)
+    task_rows = _data_rows(summary, 18)
+    assert task_rows.count(
+        [
+            "model",
+            "one",
+            "0/1",
+            "1/1 (100.0%)",
+            "1/2 (50.0%)",
+            "2/3 (66.7%)",
+            "—",
+            "138",
+            "100",
+            "10",
+            "3",
+            "20",
+            "5",
+            "9.1%",
+            "$0.1000 estimated",
+            "2.0s",
+            "1.0s",
+            "incorrect: 1",
+        ]
+    ) == 2
+    assert task_rows.count(
+        [
+            "model",
+            "two",
+            "1/1",
+            "1/1 (100.0%)",
+            "1/1 (100.0%)",
+            "2/2 (100.0%)",
+            "4.0",
+            "261",
+            "200",
+            "20",
+            "4",
+            "30",
+            "7",
+            "9.1%",
+            "$0.2000 estimated",
+            "—",
+            "1.0s",
+            "—",
+        ]
+    ) == 2
+    assert configuration_rows.count(
+        [
+            "model",
+            "1/2",
+            "50.0%",
+            "2/2 (100.0%)",
+            "2/3 (66.7%)",
+            "4/5 (80.0%)",
+            "1/2",
+            "4.0",
+            "399",
+            "300",
+            "30",
+            "7",
+            "50",
+            "12",
+            "9.1%",
+            "—",
+            "$0.3000",
+            "$0.3000",
+            "2.0s",
+            "1.0s",
+            "incorrect: 1",
+        ]
+    ) == 2
     assert summary.count("### Configuration summary") == 2
     assert summary.count("### Task results") == 2
-    assert summary.count("| model | one | 0/1 |") == 2
-    assert summary.count("| model | two | 1/1 |") == 2
     assert summary.count("$0.1000 estimated") == 2
     assert summary.count("$0.2000 estimated") == 2
+    for heading in ("### Configuration summary", "### Task results"):
+        for table in _table_blocks(summary, heading):
+            assert len(table) >= 2
+            assert len({len(line) for line in table}) == 1
 
 
 def test_summary_omits_cache_hit_rate_without_cached_input(tmp_path) -> None:
@@ -147,7 +235,8 @@ def test_summary_omits_cache_hit_rate_without_cached_input(tmp_path) -> None:
 
     summary = path.read_text()
 
-    assert "| — | 120 | 100 | 0 | 0 | 20 | — | — |" in summary
+    [task_row] = _data_rows(summary, 18)
+    assert task_row[7:14] == ["120", "100", "0", "0", "20", "—", "—"]
 
 
 def test_historical_results_default_turn_fields_to_unknown(tmp_path) -> None:
@@ -184,5 +273,7 @@ def test_summary_averages_turns_for_successful_runs_only(tmp_path) -> None:
 
     summary = path.read_text()
 
-    assert "| model | 2/3 | 66.7% |" in summary
-    assert "| 3.0 | 0 |" in summary
+    [configuration_row] = _data_rows(summary, 21)
+    assert configuration_row[1] == "2/3"
+    assert configuration_row[2] == "66.7%"
+    assert configuration_row[7:9] == ["3.0", "0"]
