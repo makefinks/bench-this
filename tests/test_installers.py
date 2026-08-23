@@ -15,12 +15,18 @@ def test_render_omp_installs_only_omp_dependencies():
     assert "opencode-ai" not in block
     assert "@github/copilot" not in block
 
-def test_render_pi_installs_pinned_upstream_package():
+
+def test_render_pi_installs_pinned_upstream_package_and_mcp_adapter():
     block = render_harness_installs(["pi"])
     assert "ARG PI_VERSION=0.84.2" in block
+    assert "ARG PI_MCP_ADAPTER_VERSION=2.27.0" in block
     assert (
         'npm install --global --ignore-scripts '
         '"@earendil-works/pi-coding-agent@${PI_VERSION}"'
+    ) in block
+    assert (
+        'npm install --prefix /opt/pi-mcp-adapter --ignore-scripts '
+        '"pi-mcp-adapter@${PI_MCP_ADAPTER_VERSION}"'
     ) in block
     assert "@oh-my-pi/pi-coding-agent" not in block
 

@@ -10,6 +10,8 @@ provide a configuration file. Follow the selected harness's native instructions:
 
 - [OpenCode MCP configuration](../harnesses/opencode/mcp.md)
 - [Copilot CLI MCP configuration](../harnesses/copilot-cli/mcp.md)
+- [Oh My Pi MCP configuration](../harnesses/omp/mcp.md)
+- [Pi MCP configuration](../harnesses/pi/mcp.md)
 
 Never put credentials in benchmark files. Do not configure a credentialed MCP server unless the
 runner has an explicit, benchmark-safe mechanism for supplying those credentials. Keep the baseline

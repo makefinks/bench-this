@@ -34,3 +34,8 @@ After login, verify only the matching OMP profile:
 ```bash
 ./benchmarks/run.py auth verify --harness omp --profile codex
 ```
+
+## Optional native integrations
+
+For an MCP treatment, apply the shared [MCP treatment policy](../../treatments/mcp.md) and then the
+[Oh My Pi MCP configuration](mcp.md).

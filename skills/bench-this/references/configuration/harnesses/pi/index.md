@@ -30,3 +30,8 @@ After login, verify only the matching Pi profile:
 ```bash
 ./benchmarks/run.py auth verify --harness pi --profile codex
 ```
+
+## Optional package integrations
+
+For an MCP treatment, apply the shared [MCP treatment policy](../../treatments/mcp.md) and then the
+[Pi MCP package configuration](mcp.md).

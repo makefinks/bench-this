@@ -49,6 +49,15 @@ defaults:
     return load_project(benchmark)
 
 
+def test_project_rejects_missing_setup_script(tmp_path):
+    project(tmp_path)
+    setup_script = tmp_path / "benchmarks/setup.sh"
+    setup_script.unlink()
+
+    with pytest.raises(ConfigurationError, match=r"setup\.sh does not exist"):
+        load_project(tmp_path / "benchmarks")
+
+
 def test_schema_rejects_missing_task_field(tmp_path):
     cfg = project(tmp_path)
     path = write(

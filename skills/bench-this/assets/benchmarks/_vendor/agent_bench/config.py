@@ -150,6 +150,7 @@ def load_project(benchmark_dir: Path) -> ProjectConfig:
     setup_command = data["setup_command"]
     if not isinstance(setup_command, str) or not setup_command.strip():
         raise ConfigurationError("setup_command must be a non-empty string")
+    _existing_file(benchmark_dir / "setup.sh", "setup.sh")
     return ProjectConfig(
         root=project_root,
         benchmark_dir=benchmark_dir,

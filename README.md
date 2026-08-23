@@ -270,7 +270,8 @@ provider selections require a pinned model.
 
 Skills, MCP servers, reasoning settings, and workspace instructions belong in separate treatment
 variants. Keeping the baseline plain makes any change in correctness, cost, or runtime attributable
-to the thing being tested.
+to the thing being tested. OMP uses its first-party MCP client. Pi has no built-in MCP, so its MCP
+treatments use a compatible pinned adapter through Pi's package system.
 
 See [configuration.md](skills/bench-this/references/configuration.md) for supported
 harnesses, providers, overlays, and reproducibility rules.

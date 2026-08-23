@@ -248,9 +248,15 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
             required_fields=COMMON_REQUIRED_FIELDS | frozenset({"provider"}),
             config_home=".pi/agent",
             installer=InstallerSpec(
-                arguments=MappingProxyType({"PI_VERSION": "0.84.2"}),
+                arguments=MappingProxyType(
+                    {
+                        "PI_MCP_ADAPTER_VERSION": "2.27.0",
+                        "PI_VERSION": "0.84.2",
+                    }
+                ),
                 commands=(
                     'npm install --global --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSION}"',
+                    'npm install --prefix /opt/pi-mcp-adapter --ignore-scripts "pi-mcp-adapter@${PI_MCP_ADAPTER_VERSION}"',
                 ),
             ),
             adapter=AdapterKind.PI,
