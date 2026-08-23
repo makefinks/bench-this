@@ -332,6 +332,10 @@ generator install them portably. For an approved MCP server, author the selected
 configuration directly; do not ask the user to supply an MCP configuration file. Compare
 correctness before token or cost savings.
 
+After executing treatments, offer a comparative results analysis without loading
+[references/results-analysis.md](references/results-analysis.md). Read that reference only when the
+user accepts the offer or asks to analyze completed treatment results.
+
 Keep measured solver time unlimited with `solver_timeout_seconds: null` unless the user explicitly
 requests a finite time budget. Setup, identity preflight, and evaluator phases remain bounded. Never
 choose smaller tasks merely so a solver fits an arbitrary wall-clock limit.
