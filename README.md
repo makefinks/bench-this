@@ -32,7 +32,7 @@ npx skills add makefinks/bench-this
 | Native Copilot CLI | ✓                                 |                   |                               |                           |                             |                                   |
 | OpenCode           | ✓                                 | ✓                 |                               | ✓                         | ✓                           | ✓                                 |
 | Oh My Pi           | ✓                                 |                   | ✓                             |                           |                             | ✓                                 |
-| Pi                 |                                   |                   | ✓                             |                           |                             | ✓                                 |
+| Pi                 | ✓                                 |                   | ✓                             |                           |                             | ✓                                 |
 
 Native Copilot CLI has no separate provider setting; it always uses your GitHub Copilot account.
 

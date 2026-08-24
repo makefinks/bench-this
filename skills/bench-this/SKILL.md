@@ -276,10 +276,10 @@ exact model or inference-profile ID and a supported source region before making 
 current documentation cannot be fetched, ask the user for the missing values instead of guessing.
 
 Treat names such as `copilot-auth` as profile labels, not proof of the intended harness or Copilot
-subscription. Before configuring an ambiguous Copilot treatment, confirm whether it means native
-Copilot CLI or OpenCode with provider `github-copilot`. For the OpenCode provider, also confirm
-whether the account uses Copilot Business. Pass `--github-copilot-business` only when the user
-confirms it; never ask for or accept an arbitrary provider base URL.
+subscription. Before configuring an ambiguous Copilot treatment, confirm the exact harness and
+provider. For OpenCode with provider `github-copilot`, also confirm whether the account uses
+Copilot Business. Pass `--github-copilot-business` only when the user confirms it; never ask for or
+accept an arbitrary provider base URL.
 
 After creating the approved configurations, derive the unique harness, provider, and auth-profile
 requirements from those configurations. Run `./benchmarks/run.py build` once after all approved

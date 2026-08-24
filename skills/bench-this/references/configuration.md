@@ -22,7 +22,7 @@ page for that combination:
 | Copilot CLI | none                         | [Copilot CLI](configuration/harnesses/copilot-cli/index.md)                                                                              |
 | Oh My Pi    | github-copilot, openai-codex | [Oh My Pi](configuration/harnesses/omp/index.md)                                                                                         |
 | Oh My Pi    | amazon-bedrock               | [Oh My Pi](configuration/harnesses/omp/index.md) and [Amazon Bedrock](configuration/harnesses/omp/providers/amazon-bedrock.md)           |
-| Pi          | openai-codex                 | [Pi](configuration/harnesses/pi/index.md)                                                                                                |
+| Pi          | github-copilot, openai-codex | [Pi](configuration/harnesses/pi/index.md)                                                                                                |
 | Pi          | amazon-bedrock               | [Pi](configuration/harnesses/pi/index.md) and [Amazon Bedrock](configuration/harnesses/pi/providers/amazon-bedrock.md)                   |
 
 ## Treatment and execution references
@@ -43,10 +43,10 @@ treatment. When values are missing, propose one concrete configuration and let t
 change, or skip it.
 
 An auth-profile name such as `copilot-auth`, `copilot`, or `work` does not identify the harness,
-provider, or subscription. If the user has not already specified them, confirm whether Copilot means
-native Copilot CLI or OpenCode with provider `github-copilot`. For OpenCode, also ask whether the
-account uses Copilot Business. Do not infer Business from the profile name or choose a custom API
-endpoint. Treat native GitHub Copilot CLI as `harness: copilot`; it is not the `gh` CLI.
+provider, or subscription. If the user has not already specified them, confirm the exact harness and
+provider. For OpenCode with provider `github-copilot`, also ask whether the account uses Copilot
+Business. Do not infer Business from the profile name or choose a custom API endpoint. Treat native
+GitHub Copilot CLI as `harness: copilot`; it is not the `gh` CLI.
 
 Never derive authorization from credential files. A profile name identifies credentials outside the
 repository; it does not grant permission to run a treatment. Do not create a configuration merely

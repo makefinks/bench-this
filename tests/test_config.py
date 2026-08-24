@@ -434,6 +434,28 @@ auth_profile: codex
     assert config.agent is None
 
 
+def test_schema_accepts_pi_github_copilot_provider(tmp_path):
+    root = tmp_path / "pi-copilot"
+    (root / "harness").mkdir(parents=True)
+    (root / "workspace").mkdir()
+    path = write(
+        root / "configuration.yaml",
+        """id: pi-copilot
+harness: pi
+provider: github-copilot
+model: gpt-5.4
+harness_config: harness
+workspace_config: workspace
+auth_profile: copilot
+""",
+    )
+
+    config = load_configuration(path)
+
+    assert config.provider == "github-copilot"
+    assert config.qualified_model == "github-copilot/gpt-5.4"
+
+
 def test_pi_provider_allowlist_rejects_unrelated_provider(tmp_path):
     root = tmp_path / "pi-invalid"
     (root / "harness").mkdir(parents=True)
@@ -442,7 +464,7 @@ def test_pi_provider_allowlist_rejects_unrelated_provider(tmp_path):
         root / "configuration.yaml",
         """id: pi-invalid
 harness: pi
-provider: github-copilot
+provider: openai
 model: gpt-fixed
 harness_config: harness
 workspace_config: workspace
@@ -590,15 +612,28 @@ def test_treatment_schema_allows_auto_only_for_copilot_selections(
     ).model == "auto"
 
 
-def test_treatment_schema_rejects_auto_for_non_copilot_provider(tmp_path):
-    path = treatment_manifest(
-        tmp_path,
-        "openai-auto",
-        """harness: opencode
+@pytest.mark.parametrize(
+    ("config_id", "selection"),
+    [
+        (
+            "openai-auto",
+            """harness: opencode
 provider: openai
 model: auto
 agent: build""",
-    )
+        ),
+        (
+            "pi-copilot-auto",
+            """harness: pi
+provider: github-copilot
+model: auto""",
+        ),
+    ],
+)
+def test_treatment_schema_rejects_auto_for_nonautomatic_provider(
+    tmp_path, config_id, selection
+):
+    path = treatment_manifest(tmp_path, config_id, selection)
 
     with pytest.raises(ConfigurationError, match="explicitly pinned"):
         load_configuration(path)

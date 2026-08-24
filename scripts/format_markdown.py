@@ -13,6 +13,7 @@ from typing import Iterable, List, Optional, Sequence, Tuple
 
 
 DEFAULT_WIDTH = 100
+IGNORE_FILE_NAME = ".markdown-format-ignore"
 FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
 LIST_RE = re.compile(r"^(\s*(?:[-+*]|\d+[.)])\s+)(.*)$")
 STRUCTURAL_RE = re.compile(
@@ -214,14 +215,58 @@ def format_markdown(text: str, width: int = DEFAULT_WIDTH) -> str:
     return formatted + "\n" if had_final_newline else formatted
 
 
+def _filter_ignored(root: Path, paths: Iterable[Path]) -> List[Path]:
+    """Apply the root ignore file with Git's native gitignore semantics."""
+
+    paths = list(paths)
+    ignore_file = root / IGNORE_FILE_NAME
+    if not ignore_file.is_file():
+        return paths
+
+    relative_paths: dict[str, Path] = {}
+    passthrough = []
+    for path in paths:
+        try:
+            relative = path.resolve().relative_to(root.resolve()).as_posix()
+        except ValueError:
+            passthrough.append(path)
+            continue
+        relative_paths[relative] = path
+    if not relative_paths:
+        return passthrough
+
+    result = subprocess.run(
+        [
+            "git",
+            "-c",
+            f"core.excludesFile={ignore_file}",
+            "check-ignore",
+            "--no-index",
+            "--stdin",
+            "-z",
+        ],
+        cwd=root,
+        input="\0".join(relative_paths) + "\0",
+        text=True,
+        stdout=subprocess.PIPE,
+    )
+    if result.returncode not in (0, 1):
+        raise subprocess.CalledProcessError(result.returncode, result.args)
+    ignored = set(result.stdout.rstrip("\0").split("\0")) if result.stdout else set()
+    return passthrough + [
+        path for relative, path in relative_paths.items() if relative not in ignored
+    ]
+
+
 def _paths(root: Path, arguments: Sequence[str]) -> Iterable[Path]:
     if not arguments:
-        return repository_markdown(root)
-    paths = []
-    for argument in arguments:
-        path = Path(argument)
-        paths.append(path if path.is_absolute() else root / path)
-    return paths
+        paths = repository_markdown(root)
+    else:
+        paths = []
+        for argument in arguments:
+            path = Path(argument)
+            paths.append(path if path.is_absolute() else root / path)
+    return _filter_ignored(root, paths)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

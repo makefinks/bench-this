@@ -237,6 +237,9 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
             providers=MappingProxyType(
                 {
                     "amazon-bedrock": BEDROCK_PROVIDER,
+                    "github-copilot": _provider(
+                        "github-copilot", AuthPolicy.PI_OAUTH, "github-copilot"
+                    ),
                     "openai-codex": _provider(
                         "openai-codex", AuthPolicy.PI_OAUTH, "openai"
                     ),

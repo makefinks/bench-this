@@ -30,8 +30,18 @@ def test_catalog_declares_complete_supported_matrix():
         ("omp", "github-copilot"),
         ("omp", "openai-codex"),
         ("pi", "amazon-bedrock"),
+        ("pi", "github-copilot"),
         ("pi", "openai-codex"),
     }
+
+
+def test_pi_github_copilot_reuses_oauth_and_requires_a_pinned_model():
+    harness, provider = resolve_selection("pi", "github-copilot")
+
+    assert harness.model_reference is ModelReferenceForm.QUALIFIED
+    assert provider.auth_policy is AuthPolicy.PI_OAUTH
+    assert provider.pricing_provider == "github-copilot"
+    assert not provider.allow_automatic_model
 
 
 def test_every_harness_has_complete_generic_metadata():

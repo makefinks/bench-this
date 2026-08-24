@@ -339,6 +339,30 @@ def test_creates_pi_codex_configuration(tmp_path: Path) -> None:
     assert list((root / "harness").iterdir()) == []
 
 
+def test_creates_pi_github_copilot_configuration(tmp_path: Path) -> None:
+    repository = scaffold(tmp_path)
+    result = run_configure(
+        repository,
+        "--harness",
+        "pi",
+        "--provider",
+        "github-copilot",
+        "--model",
+        "gpt-5.4",
+        "--auth-profile",
+        "copilot",
+    )
+
+    assert result.returncode == 0, result.stderr
+    root = repository / "benchmarks/configurations/pi-github-copilot-gpt-5-4"
+    manifest = (root / "configuration.yaml").read_text()
+    assert "harness: pi" in manifest
+    assert "provider: github-copilot" in manifest
+    assert "model: gpt-5.4" in manifest
+    assert "github_copilot_business" not in manifest
+    assert list((root / "harness").iterdir()) == []
+
+
 def test_creates_pi_bedrock_configuration(tmp_path: Path) -> None:
     repository = scaffold(tmp_path)
     result = run_configure(

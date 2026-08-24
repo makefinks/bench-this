@@ -1,4 +1,30 @@
-from scripts.format_markdown import format_markdown
+from pathlib import Path
+import subprocess
+
+from scripts.format_markdown import _paths, format_markdown
+
+
+def test_root_ignore_file_filters_discovered_and_explicit_markdown(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / ".markdown-format-ignore").write_text(
+        "# Generated completion ledgers\nGATES.md\nignored/**\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "GATES.md").write_text("gate\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("readme\n", encoding="utf-8")
+    ignored = tmp_path / "ignored" / "nested.md"
+    ignored.parent.mkdir()
+    ignored.write_text("nested\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "GATES.md", "README.md", "ignored/nested.md"],
+        cwd=tmp_path,
+        check=True,
+    )
+
+    assert list(_paths(tmp_path, [])) == [tmp_path / "README.md"]
+    assert list(_paths(tmp_path, ["GATES.md", "README.md", "ignored/nested.md"])) == [
+        tmp_path / "README.md"
+    ]
 
 
 def test_wraps_plain_and_list_prose_at_100_columns() -> None:

@@ -245,20 +245,18 @@ def pi_config(tmp_path, provider="openai-codex"):
     )
 
 
-def test_pi_codex_oauth_profile_stages_only_native_auth_file(tmp_path):
+@pytest.mark.parametrize("provider", ["openai-codex", "github-copilot"])
+def test_pi_oauth_profile_stages_only_selected_native_auth_file(tmp_path, provider):
     auth_root = tmp_path / "auth"
     auth = auth_root / "pi-auth" / "pi" / PI_AUTH_FILE
     auth.parent.mkdir(parents=True)
+    credential = {
+        "type": "oauth",
+        "access": "fixture-access",
+        "refresh": "fixture-refresh",
+    }
     auth.write_text(
-        json.dumps(
-            {
-                "openai-codex": {
-                    "type": "oauth",
-                    "access": "fixture-access",
-                    "refresh": "fixture-refresh",
-                }
-            }
-        ),
+        json.dumps({provider: credential}),
         encoding="utf-8",
     )
     (auth.parent / "settings.json").write_text('{"theme":"fixture"}', encoding="utf-8")
@@ -266,18 +264,14 @@ def test_pi_codex_oauth_profile_stages_only_native_auth_file(tmp_path):
     session = auth.parent / "sessions" / "project" / "session.jsonl"
     session.parent.mkdir(parents=True)
     session.write_text('{"type":"session"}\n', encoding="utf-8")
-    config = pi_config(tmp_path)
+    config = pi_config(tmp_path, provider)
 
     assert validate_auth_profile(config, auth_root) == auth_root / "pi-auth" / "pi"
     prepared = prepare_home(config, tmp_path / "pi-home", auth_root)
     home = prepared.home
     assert dict(prepared.secret_environment) == {}
     assert json.loads((home / PI_AUTH_FILE).read_text(encoding="utf-8")) == {
-        "openai-codex": {
-            "type": "oauth",
-            "access": "fixture-access",
-            "refresh": "fixture-refresh",
-        }
+        provider: credential
     }
     assert not (home / ".pi/agent/settings.json").exists()
     assert not (home / ".pi/agent/models-store.json").exists()
