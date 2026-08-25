@@ -74,12 +74,20 @@ class DockerEngine:
     def image_exists(self, image: str) -> bool:
         """Check whether the configured benchmark image exists locally."""
 
-        result = subprocess.run(
-            [self.executable, "image", "inspect", image],
-            capture_output=True,
-            text=True,
-        )
-        return result.returncode == 0
+        try:
+            result = subprocess.run(
+                [self.executable, "image", "ls", "--quiet", image],
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError as exc:
+            raise InfrastructureError(
+                f"Docker executable not found: {self.executable}"
+            ) from exc
+        if result.returncode:
+            detail = result.stderr.strip() or result.stdout.strip() or "Docker image lookup failed"
+            raise InfrastructureError(f"Docker image lookup failed for {image!r}: {detail}")
+        return bool(result.stdout.strip())
 
     def image_id(self, image: str) -> str:
         """Resolve a mutable image name to Docker's immutable content identity."""
@@ -264,9 +272,25 @@ class DockerEngine:
     ) -> None:
         """Run source-free device login while persisting only the selected home."""
 
-        args = [self.executable, "run", "--rm", "-it", "--network", "bridge"]
+        args = [
+            self.executable,
+            "run",
+            "--rm",
+            "-it",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--pids-limit=512",
+            "--user",
+            f"{os.getuid()}:{os.getgid()}",
+            "--workdir",
+            "/home/bench",
+            "--network",
+            "bridge",
+        ]
         for mount in mounts:
             source = mount.source.resolve()
+            if not source.exists():
+                raise InfrastructureError(f"mount source does not exist: {source}")
             args.extend(["--mount", f"type=bind,source={source},target={mount.target}"])
         for key, value in sorted(environment.items()):
             args.extend(["--env", f"{key}={value}"])

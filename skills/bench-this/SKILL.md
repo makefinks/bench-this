@@ -291,16 +291,16 @@ the user's normal Copilot, OpenCode, GitHub CLI, browser, or home-directory stat
 benchmark profile avoids another login; it still does not authorize a treatment run.
 
 For every missing benchmark profile, tell the user which approved configurations require it and
-follow the selected harness and provider references to offer only their supported setup options.
-Start an assisted authentication flow only when that reference defines one; otherwise, provide the
-exact command for the user to run. Do not start authentication merely because a configuration was
-created, and do not authenticate unused harnesses or providers. During assisted authentication,
-relay any device URL or one-time code and wait for the user to finish authorization. Never request
-or handle passwords. Receive an API key only where the harness or provider reference defines a
-non-interactive benchmark-safe route, such as the Bedrock helper; otherwise, have the user execute
-the command directly. Follow the harness and provider references reached from
+follow the selected harness and provider references to provide the exact `auth login` command. Tell
+the user to run it in a real terminal and choose the CLI's headless or device-code authentication
+option. Browser or localhost-callback options cannot return to the isolated container; a device-code
+flow may still ask the user to open a URL in their host browser. You should not drive the CLI's TTY
+or handle passwords, device codes, or provider responses. Do not start authentication merely because
+a configuration was created, and do not authenticate unused harnesses or providers. Receive an API
+key only where the harness or provider reference defines a non-interactive benchmark-safe route,
+such as the Bedrock helper. Follow the harness and provider references reached from
 [references/configuration.md](references/configuration.md)
-for the exact assisted or manual flow and commands.
+for the exact interactive CLI or Bedrock helper commands.
 
 After authentication completes, run the matching `auth verify` command. For an existing unverified
 profile, offer verification or defer its source-free identity preflight until the user authorizes

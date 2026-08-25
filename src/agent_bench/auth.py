@@ -11,8 +11,9 @@ import re
 import shutil
 import sqlite3
 import tempfile
+import time
 from types import MappingProxyType
-from typing import Mapping, NoReturn, Optional
+from typing import Callable, Mapping, Optional
 
 from .catalog import (
     AMAZON_BEDROCK_PROVIDER,
@@ -23,7 +24,7 @@ from .catalog import (
     resolve_selection,
 )
 from .docker import DockerEngine, Mount
-from .errors import ConfigurationError, InfrastructureError
+from .errors import BenchmarkError, ConfigurationError, InfrastructureError
 from .models import ProjectConfig, TreatmentConfig
 from .workspace import _reject_symlinks, copy_contents
 
@@ -99,12 +100,20 @@ def auth_profile_root(
     return base.expanduser().resolve() / profile / harness
 
 
+def _auth_login_command(config: TreatmentConfig) -> str:
+    provider = f" --provider {config.provider}" if config.provider is not None else ""
+    return (
+        f"./benchmarks/run.py auth login --harness {config.harness}{provider} "
+        f"--profile {config.auth_profile}"
+    )
+
+
 def _profile(config: TreatmentConfig, auth_root: Optional[Path]) -> Path:
     profile = auth_profile_root(config.auth_profile, config.harness, auth_root)
     if not profile.is_dir():
         raise InfrastructureError(
             f"authentication profile not found: {profile}; "
-            "run `agent-bench auth login` first"
+            f"run `{_auth_login_command(config)}`"
         )
     _reject_symlinks(profile, "auth_profile")
     return profile
@@ -114,25 +123,72 @@ def _files(profile: Path) -> list[Path]:
     return sorted(path.relative_to(profile) for path in profile.rglob("*") if path.is_file())
 
 
+def _replace_profile(pending: Path, destination: Path) -> None:
+    """Swap a validated pending profile in while preserving the old profile on failure."""
+
+    if not destination.exists():
+        pending.rename(destination)
+        return
+    _reject_symlinks(destination, "auth_profile")
+    backup = Path(
+        tempfile.mkdtemp(prefix=f".{destination.name}-previous-", dir=destination.parent)
+    )
+    backup.rmdir()
+    destination.rename(backup)
+    try:
+        pending.rename(destination)
+    except BaseException:
+        backup.rename(destination)
+        raise
+    shutil.rmtree(backup)
+
+
+def _interactive_profile_login(
+    destination: Path,
+    image: str,
+    command: list[str],
+    environment: Mapping[str, str],
+    docker: DockerEngine,
+    finalize: Callable[[Path], None],
+) -> Path:
+    """Run login in a fresh home and publish only its validated credential artifact."""
+
+    if not docker.image_exists(image):
+        raise InfrastructureError(
+            f"benchmark image {image!r} is not built; run `./benchmarks/run.py build` "
+            "before `auth login`"
+        )
+    print(
+        "Choose the CLI's headless/device-code authentication option. "
+        "Browser/localhost callback authentication cannot return to this container."
+    )
+    for seconds in range(3, 0, -1):
+        print(f"Opening interactive login in {seconds}...", flush=True)
+        time.sleep(1)
+    print("----------------------- DOCKER -----------------------", flush=True)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    pending = Path(
+        tempfile.mkdtemp(prefix=f".{destination.name}-pending-", dir=destination.parent)
+    )
+    pending.chmod(0o700)
+    try:
+        docker.run_interactive(
+            image,
+            command,
+            [Mount(pending, "/home/bench")],
+            dict(environment),
+        )
+        finalize(pending)
+        _replace_profile(pending, destination)
+    finally:
+        shutil.rmtree(pending, ignore_errors=True)
+    return destination
+
+
 def _stage_file(validated: ValidatedAuth, destination: Path, relative_path: Path) -> None:
     target = destination / relative_path
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(validated.profile / relative_path, target)
-
-
-def _manual_oauth_login(
-    destination: Path,
-    agent_directory: Path,
-    executable: str,
-    display_name: str,
-    provider: ProviderSpec,
-) -> NoReturn:
-    agent_dir = destination / agent_directory
-    raise ConfigurationError(
-        f"{display_name} OAuth login must be completed in the user's terminal. Run:\n"
-        f"PI_CODING_AGENT_DIR={agent_dir} {executable}\n"
-        f"Then run /login {provider.id} inside {display_name} and retry."
-    )
 
 
 def _one_line_secret(value: object, label: str) -> str:
@@ -211,6 +267,17 @@ def store_bedrock_credential(
     )
 
 
+def _write_only_profile_file(
+    profile: Path, relative_path: Path, content: bytes
+) -> None:
+    shutil.rmtree(profile)
+    destination = profile / relative_path
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    profile.chmod(0o700)
+    destination.write_bytes(content)
+    destination.chmod(0o600)
+
+
 def narrow_opencode_profile(destination: Path, provider: str) -> None:
     """Retain only one selected OpenCode credential after interactive login."""
 
@@ -218,17 +285,64 @@ def narrow_opencode_profile(destination: Path, provider: str) -> None:
     try:
         credentials = json.loads(auth_path.read_text(encoding="utf-8"))
         selected = credentials[provider]
-    except (FileNotFoundError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        if not isinstance(selected, dict):
+            raise TypeError
+    except (FileNotFoundError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
         raise InfrastructureError(
             f"OpenCode login did not create a valid {provider!r} credential"
         ) from exc
-    shutil.rmtree(destination)
-    auth_path.parent.mkdir(parents=True, exist_ok=True)
-    auth_path.write_text(
-        json.dumps({provider: selected}, separators=(",", ":")) + "\n",
-        encoding="utf-8",
-    )
-    auth_path.chmod(0o600)
+    content = (json.dumps({provider: selected}, separators=(",", ":")) + "\n").encode()
+    _write_only_profile_file(destination, OPENCODE_AUTH_FILE, content)
+
+
+def _narrow_pi_profile(profile: Path, provider: str) -> None:
+    auth_path = profile / PI_AUTH_FILE
+    try:
+        credentials = json.loads(auth_path.read_text(encoding="utf-8"))
+        selected = credentials[provider]
+        if not isinstance(selected, dict) or selected.get("type") != "oauth":
+            raise TypeError
+    except (FileNotFoundError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise InfrastructureError(
+            f"Pi login did not create a valid {provider!r} OAuth credential"
+        ) from exc
+    content = (json.dumps({provider: selected}, separators=(",", ":")) + "\n").encode()
+    _write_only_profile_file(profile, PI_AUTH_FILE, content)
+
+
+def _narrow_omp_profile(profile: Path, provider: str) -> None:
+    database = profile / OMP_NATIVE_DATABASE
+    try:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            snapshot = Path(temporary_directory) / "agent.db"
+            with (
+                sqlite3.connect(f"file:{database}?mode=ro", uri=True) as source,
+                sqlite3.connect(snapshot) as destination,
+            ):
+                source.backup(destination)
+            with sqlite3.connect(snapshot) as connection:
+                connection.execute("PRAGMA journal_mode=DELETE")
+                rows = connection.execute(
+                    "SELECT provider, credential_type, disabled_cause FROM auth_credentials"
+                ).fetchall()
+            content = snapshot.read_bytes()
+    except (OSError, sqlite3.Error) as exc:
+        raise InfrastructureError("OMP login did not create a valid OAuth database") from exc
+    if rows != [(provider, "oauth", None)]:
+        raise InfrastructureError(
+            f"OMP login did not create only an enabled {provider!r} OAuth credential"
+        )
+    _write_only_profile_file(profile, OMP_NATIVE_DATABASE, content)
+
+
+def _narrow_copilot_profile(profile: Path) -> None:
+    bundle = profile / ".copilot"
+    _reject_symlinks(bundle, "Copilot authentication bundle")
+    if not bundle.is_dir() or not _files(bundle):
+        raise InfrastructureError("Copilot login did not create a credential bundle")
+    for path in profile.iterdir():
+        if path != bundle:
+            shutil.rmtree(path) if path.is_dir() else path.unlink()
 
 
 class NativeCopilotAuth(AuthStrategy):
@@ -236,22 +350,28 @@ class NativeCopilotAuth(AuthStrategy):
 
     def login(self, project, harness, provider, profile_name, docker):
         destination = auth_profile_root(profile_name, harness.id)
-        destination.mkdir(parents=True, exist_ok=True)
         print("In Copilot CLI, run /login, finish the device flow, then exit with Ctrl-D.")
-        docker.run_interactive(
+        return _interactive_profile_login(
+            destination,
             project.image.name,
             ["copilot"],
-            [Mount(destination, "/home/bench")],
             {
                 "HOME": "/home/bench",
                 "COPILOT_HOME": "/home/bench/.copilot",
-                "NO_COLOR": "1",
             },
+            docker,
+            _narrow_copilot_profile,
         )
-        return destination
 
     def validate(self, config, auth_root=None):
-        return ValidatedAuth(_profile(config, auth_root), MappingProxyType({}))
+        profile = _profile(config, auth_root)
+        files = _files(profile)
+        if not files or any(path.parts[0] != ".copilot" for path in files):
+            raise ConfigurationError(
+                f"Copilot auth profile contains files outside .copilot: {profile}; "
+                f"run `{_auth_login_command(config)}`"
+            )
+        return ValidatedAuth(profile, MappingProxyType({}))
 
     def stage(self, config, validated, destination):
         copy_contents(validated.profile, destination, "auth_profile")
@@ -262,33 +382,27 @@ class OpenCodeProviderAuth(AuthStrategy):
 
     def login(self, project, harness, provider, profile_name, docker):
         destination = auth_profile_root(profile_name, harness.id)
-        destination.mkdir(parents=True, exist_ok=True)
-        docker.run_interactive(
+        return _interactive_profile_login(
+            destination,
             project.image.name,
             ["opencode", "auth", "login", "--provider", provider.id],
-            [Mount(destination, "/home/bench")],
-            {
-                "HOME": "/home/bench",
-                "NO_COLOR": "1",
-                "XDG_CONFIG_HOME": "/home/bench/.config",
-                "XDG_DATA_HOME": "/home/bench/.local/share",
-            },
+            {"HOME": "/home/bench"},
+            docker,
+            lambda pending: narrow_opencode_profile(pending, str(provider.id)),
         )
-        narrow_opencode_profile(destination, str(provider.id))
-        return destination
 
     def validate(self, config, auth_root=None):
         profile = _profile(config, auth_root)
         if _files(profile) != [OPENCODE_AUTH_FILE]:
             raise ConfigurationError(
                 f"OpenCode auth profile contains unexpected files: {profile}; "
-                "run auth login again"
+                f"run `{_auth_login_command(config)}`"
             )
         try:
             credentials = json.loads(
                 (profile / OPENCODE_AUTH_FILE).read_text(encoding="utf-8")
             )
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ConfigurationError(
                 f"invalid OpenCode credential file: {profile / OPENCODE_AUTH_FILE}"
             ) from exc
@@ -314,12 +428,35 @@ class OmpOAuthAuth(AuthStrategy):
 
     def login(self, project, harness, provider, profile_name, docker):
         destination = auth_profile_root(profile_name, harness.id)
-        _manual_oauth_login(
-            destination, Path(".omp/agent"), "omp", harness.display_name, provider
+        if provider.id == "openai-codex":
+            print(
+                "In Oh My Pi, run /login, select ChatGPT, then choose the headless option. "
+                "Finish login, then exit."
+            )
+        else:
+            print(
+                "In Oh My Pi, run /login, select GitHub Copilot, then choose the "
+                "headless/device-code option. Finish login, then exit."
+            )
+        return _interactive_profile_login(
+            destination,
+            project.image.name,
+            ["omp"],
+            {
+                "HOME": "/home/bench",
+                "PI_CODING_AGENT_DIR": "/home/bench/.omp/agent",
+            },
+            docker,
+            lambda pending: _narrow_omp_profile(pending, str(provider.id)),
         )
 
     def validate(self, config, auth_root=None):
         profile = _profile(config, auth_root)
+        if _files(profile) != [OMP_NATIVE_DATABASE]:
+            raise ConfigurationError(
+                f"OMP auth profile contains unexpected files: {profile}; "
+                f"run `{_auth_login_command(config)}`"
+            )
         database = profile / OMP_NATIVE_DATABASE
         if not database.is_file():
             raise ConfigurationError(
@@ -349,12 +486,26 @@ class PiOAuthAuth(AuthStrategy):
 
     def login(self, project, harness, provider, profile_name, docker):
         destination = auth_profile_root(profile_name, harness.id)
-        _manual_oauth_login(
-            destination, Path(".pi/agent"), "pi", harness.display_name, provider
+        print(f"In {harness.display_name}, run /login {provider.id}, finish login, then exit.")
+        return _interactive_profile_login(
+            destination,
+            project.image.name,
+            ["pi"],
+            {
+                "HOME": "/home/bench",
+                "PI_CODING_AGENT_DIR": "/home/bench/.pi/agent",
+            },
+            docker,
+            lambda pending: _narrow_pi_profile(pending, str(provider.id)),
         )
 
     def validate(self, config, auth_root=None):
         profile = _profile(config, auth_root)
+        if _files(profile) != [PI_AUTH_FILE]:
+            raise ConfigurationError(
+                f"Pi auth profile contains unexpected files: {profile}; "
+                f"run `{_auth_login_command(config)}`"
+            )
         auth_path = profile / PI_AUTH_FILE
         if not auth_path.is_file():
             raise ConfigurationError(
@@ -362,7 +513,7 @@ class PiOAuthAuth(AuthStrategy):
             )
         try:
             credentials = json.loads(auth_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ConfigurationError(f"invalid Pi credential file: {auth_path}") from exc
         credential = credentials.get(config.provider) if isinstance(credentials, dict) else None
         if (
@@ -392,12 +543,12 @@ class BedrockBearerAuth(AuthStrategy):
         if _files(profile) != [BEDROCK_CREDENTIALS_FILE]:
             raise ConfigurationError(
                 f"Amazon Bedrock auth profile contains unexpected files: {profile}; "
-                "run auth login again"
+                f"run `{_auth_login_command(config)}`"
             )
         credential_path = profile / BEDROCK_CREDENTIALS_FILE
         try:
             credentials = json.loads(credential_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ConfigurationError(
                 f"invalid Amazon Bedrock credential file: {credential_path}"
             ) from exc
@@ -453,6 +604,16 @@ def validate_auth_profile(
     return auth_strategy_for(config).validate(config, auth_root).profile
 
 
+def _authentication_required(config: TreatmentConfig, cause: BenchmarkError) -> BenchmarkError:
+    command = _auth_login_command(config)
+    error_type = ConfigurationError if isinstance(cause, ConfigurationError) else InfrastructureError
+    return error_type(
+        f"authentication required for harness={config.harness}, provider={config.provider}, "
+        f"profile={config.auth_profile}: {cause}; run `{command}`\n"
+        "ACTION_REQUIRED: auth-login"
+    )
+
+
 def prepare_home(
     config: TreatmentConfig,
     destination: Path,
@@ -461,7 +622,10 @@ def prepare_home(
     """Validate once, stage approved state, overlay config, and retain secrets."""
 
     strategy = auth_strategy_for(config)
-    validated = strategy.validate(config, auth_root)
+    try:
+        validated = strategy.validate(config, auth_root)
+    except (ConfigurationError, InfrastructureError) as exc:
+        raise _authentication_required(config, exc) from exc
     destination.mkdir(parents=True, exist_ok=True)
     strategy.stage(config, validated, destination)
     copy_contents(

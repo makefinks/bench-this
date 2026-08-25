@@ -15,19 +15,19 @@ python <skill-directory>/scripts/configure.py <repository> \
   --auth-profile codex
 ```
 
-OpenAI Codex and GitHub Copilot use OMP's native interactive OAuth login:
-
-Give the user the following command to run in their own terminal. The user must then run
-`/login openai-codex` (or `/login github-copilot`) inside OMP and complete the browser/device flow:
+OpenAI Codex and GitHub Copilot use OMP's native interactive OAuth login. Give the user the runner
+command with the exact provider and profile to execute in a real terminal:
 
 ```bash
-PI_CODING_AGENT_DIR="$HOME/.agent-bench/auth/codex/omp/.omp/agent" \
-omp
+./benchmarks/run.py auth login --harness omp \
+  --provider openai-codex --profile codex
 ```
 
-The resulting OMP OAuth database is stored in the benchmark-owned profile. Do not launch OMP or the
-OAuth flow for the user; the runner's `auth login` command intentionally does not launch this flow
-inside Docker.
+The pinned OMP executable runs in the benchmark image without project source or host credentials.
+For OpenAI Codex, tell the user to run `/login` inside OMP, select **ChatGPT**, and then choose the
+**headless** option. For GitHub Copilot, run `/login`, select **GitHub Copilot**, and choose its
+headless or device-code option. Use the host browser only for a displayed device-code URL. Only the
+selected provider's validated OAuth database is retained.
 
 After login, verify only the matching OMP profile:
 

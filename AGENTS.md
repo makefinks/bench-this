@@ -27,6 +27,11 @@ The formatter intentionally preserves YAML frontmatter, fenced and indented code
 tables, headings, HTML, and link-reference definitions when wrapping them could change
 their meaning.
 
+## Tests
+
+Test behavior and stable interfaces, not incidental user-facing prose. Assert rendered text only
+when its exact wording or format is a documented contract.
+
 ## Repository validation
 
 Run the repository tests with:

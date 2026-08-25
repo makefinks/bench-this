@@ -18,13 +18,15 @@ OpenAI Codex uses Pi's native interactive OAuth login. Give the user this comman
 own terminal:
 
 ```bash
-PI_CODING_AGENT_DIR="$HOME/.agent-bench/auth/codex/pi/.pi/agent" pi
+./benchmarks/run.py auth login --harness pi \
+  --provider openai-codex --profile codex
 ```
 
-The user must then run `/login openai-codex` inside Pi and complete the browser flow. The resulting
-`auth.json` stays inside the benchmark-owned profile. Interactive login also creates settings, model
-catalogs, and session files; the runner ignores them and stages only `auth.json`. Do not launch Pi
-or the OAuth flow for the user.
+The pinned Pi executable runs in the benchmark image without project source or host credentials.
+Tell the user to run `/login openai-codex` inside Pi and choose its headless or device-code option.
+Use the host browser only for a displayed device-code URL; browser callbacks cannot return to the
+isolated container. The runner retains only the selected provider's OAuth entry from `auth.json`;
+settings, model catalogs, and sessions are discarded.
 
 For a GitHub Copilot profile, use `/login github-copilot` instead. Pi derives the account-specific
 endpoint from the OAuth credential; do not configure a custom endpoint.

@@ -75,16 +75,16 @@ keychain state. Do not copy a complete home directory. The benchmark profile is 
 separate so the runner can stage only the selected credentials into a disposable home.
 
 For each missing profile, identify the configurations that need it and follow the selected harness
-and provider references to offer only their supported setup options. Ask whether the user wants an
-agent-assisted flow when one is supported or the exact command to run themselves. Configuration
-approval alone does not authorize starting authentication.
+and provider references to provide the exact setup command. Tell the user to run interactive CLI
+login in a real terminal and choose its headless or device-code option. Callback-based browser login
+cannot return to the isolated container; opening a host-browser URL shown by a device-code flow is
+expected. You should not drive the CLI's TTY or handle passwords, device codes, or provider
+responses. Configuration approval alone does not authorize starting authentication.
 
 Read the selected harness reference for its normal authentication and verification commands. Also
 read the harness/provider reference when one exists: provider integrations can replace the normal
-flow. In an assisted browser or device flow, relay any device URL and one-time code and wait for the
-user to finish authorization. Never ask for or handle a password. If a provider flow requests an API
-key rather than browser or device authorization, have the user execute the command directly unless
-the harness/provider reference defines an explicit non-interactive, benchmark-safe route.
+flow. A provider API key stays user-entered unless the harness/provider reference defines an
+explicit non-interactive, benchmark-safe route.
 
 After a newly completed login, verify only the matching profile and harness. If the profile already
 existed and the user only asked for configuration, report that it will be verified before execution

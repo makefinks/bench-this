@@ -65,10 +65,10 @@ setup, give the user the runner command with the exact provider and profile:
   --profile openai
 ```
 
-In an agent-assisted OAuth flow, start the runner command, relay any device URL and one-time code,
-and wait for the user to finish authorization. Never ask for or handle a password. If the provider
-flow requests an API key rather than browser or device authorization, have the user execute the
-command directly.
+Tell the user to run this interactive command in a real terminal and choose the headless or
+device-code option. A device-code URL may be opened in the host browser, but callback-based browser
+login cannot return to the isolated container. The pinned OpenCode executable runs in the benchmark
+image. You should not drive its TTY or handle passwords, device codes, or provider responses.
 
 After a newly completed login, verify only the matching profile and harness:
 

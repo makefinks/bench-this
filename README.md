@@ -289,7 +289,7 @@ device flow, a provider token, or AWS credentials. Profiles live outside the tar
 # Or, for native Copilot CLI:
 ./benchmarks/run.py auth login --harness copilot --profile <profile>
 
-# Pi OAuth login prints the isolated PI_CODING_AGENT_DIR command to run.
+# Pi and Oh My Pi use the same containerized CLI boundary.
 ./benchmarks/run.py auth login \
   --harness pi --provider openai-codex --profile <profile>
 
@@ -302,8 +302,10 @@ The agent checks for the exact benchmark profile only after an approved treatmen
 required harness, provider, and profile. An existing benchmark profile is reused. The runner never
 silently imports the user's normal Copilot, OpenCode, Pi, GitHub CLI, browser, AWS, or
 home-directory
-credentials. If the profile is missing, the agent offers the supported setup or gives you the same
-command to run yourself. You personally complete browser or device authorization.
+credentials. If the profile is missing, the agent gives you the exact `auth login` command to run
+in a real terminal and tells you to choose the CLI's headless or device-code option. Browser or
+localhost-callback options cannot return to the isolated container. A device-code URL may still be
+opened in your host browser.
 
 The non-interactive Bedrock helper accepts credentials only through its process environment.
 OpenCode, Oh My Pi, and Pi profiles inject a bearer token as `AWS_BEARER_TOKEN_BEDROCK`. The helper

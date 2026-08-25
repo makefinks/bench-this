@@ -658,7 +658,8 @@ raise SystemExit(0 if all(groups.values()) and not candidate_error else 1)</pre>
           harness settings, workspace overlay, and extra command arguments. The static catalog
           supports native Copilot CLI; OpenCode with Amazon Bedrock, GitHub Copilot, OpenAI,
           OpenCode Zen, and OpenCode Go; Oh My Pi with Amazon Bedrock, GitHub Copilot, and OpenAI
-          Codex; and Pi with Amazon Bedrock and OpenAI Codex. Native Copilot is the catalog's
+          Codex; and Pi with Amazon Bedrock, GitHub Copilot, and OpenAI Codex. Native Copilot is the
+          catalog's
           explicit providerless selection. Models must be pinned except that native and
           provider-backed GitHub Copilot selections may use <code>auto</code>.</p>
 
@@ -765,21 +766,27 @@ raise SystemExit(0 if all(groups.values()) and not candidate_error else 1)</pre>
         <p>Profiles live at <code>~/.agent-bench/auth/&lt;profile&gt;/&lt;harness&gt;/</code>. The
           closed authentication registry owns native Copilot device login, OpenCode provider login,
           Oh My Pi OAuth databases, Pi provider-scoped OAuth JSON, and Bedrock bearer tokens.
-          Interactive OpenCode login runs in the benchmark image with one explicit provider. The
-          strategy removes caches, logs, databases, package data, and plugin links, retaining only
-          <code>.local/share/opencode/auth.json</code> for that provider.</p>
+          Interactive Copilot, OpenCode, Oh My Pi, and Pi login runs from a real user terminal in
+          the pinned benchmark image. Users choose the CLI's headless or device-code option because
+          browser and localhost callbacks cannot return to the isolated container. Each attempt uses
+          a fresh hardened container and pending home; project source and host credentials are absent.
+          The strategy publishes the pending profile
+          only after validation, preserving the old profile on failure. It retains only Copilot's
+          isolated <code>.copilot</code> bundle, OpenCode's provider-filtered
+          <code>.local/share/opencode/auth.json</code>, Oh My Pi's selected OAuth database, or Pi's
+          provider-filtered <code>.pi/agent/auth.json</code>.</p>
         <p>Amazon Bedrock uses one runner-owned bearer-token profile per harness. Manual login uses
           a hidden prompt; agent-assisted setup uses the non-interactive
           <code>provision_auth.py</code> helper. Both paths store the same narrow external profile.
           Home preparation parses the token once and returns it as
           <code>AWS_BEARER_TOKEN_BEDROCK</code> for both preflight and solver execution. The token
           file never enters the disposable harness home or Docker process arguments.</p>
-        <p>Profile validation rejects symbolic links and malformed structured state. OpenCode must
-          contain exactly one selected credential. Pi stages only the selected
-          <code>auth.json</code>. Oh My Pi parses its SQLite credential metadata and stages only an
-          enabled OAuth database for the selected provider. Native Copilot remains opaque under its
-          existing contract. After strategy staging, the treatment's harness settings overlay the
-          catalog-declared configuration home, so credentials cannot replace experiment settings.</p>
+        <p>Profile validation rejects symbolic links and malformed structured state. OpenCode and
+          Pi must contain exactly one selected credential. Oh My Pi parses its SQLite credential
+          metadata and accepts only an enabled OAuth database for the selected provider. Native
+          Copilot remains opaque inside its isolated bundle. After strategy staging, the treatment's
+          harness settings overlay the catalog-declared configuration home, so credentials cannot
+          replace experiment settings.</p>
 
         <h3>How the runner starts each agent</h3>
         <div class="table-scroll">
@@ -937,17 +944,18 @@ raise SystemExit(0 if all(groups.values()) and not candidate_error else 1)</pre>
         <dl class="component-list">
           <dt>scaffold.py</dt><dd>Copies the self-contained benchmark package into a target and gives its local Docker image a name that will not clash with another checkout.</dd>
           <dt>task_workspace.py</dt><dd>Prepares isolated task-writing workspaces, runs the repeatable read-only <code>check</code> guard, accepts a reviewed bundle once, and discards the workspace.</dd>
-          <dt>configure.py</dt><dd>Safely creates a fixed Copilot or OpenCode treatment and can copy portable skill directories into it.</dd>
+          <dt>configure.py</dt><dd>Safely creates fixed Copilot, OpenCode, Oh My Pi, or Pi treatments and can copy portable skill directories into them.</dd>
         </dl>
 
         <h3>Runner modules</h3>
         <dl class="component-list">
-          <dt>cli.py</dt><dd>Defines commands, interactive login, OpenCode profile cleanup, progress output, and readable error messages.</dd>
+          <dt>cli.py</dt><dd>Defines commands, catalog-selected authentication, progress output, and readable error messages.</dd>
           <dt>config.py</dt><dd>Checks project, task, and treatment YAML, then converts it into resolved configuration records.</dd>
           <dt>models.py</dt><dd>Defines configuration records, validation receipts, and standardized run results.</dd>
           <dt>scaffold.py</dt><dd>Creates the scaffold used by the installed <code>agent-bench init</code> command.</dd>
-          <dt>workspace.py</dt><dd>Exports safe historical copies, adds public files, checks credential profiles, and prepares temporary home directories.</dd>
-          <dt>harnesses.py</dt><dd>Builds Copilot and OpenCode commands, prepares their environments, reads usage, and checks model identity.</dd>
+          <dt>workspace.py</dt><dd>Exports safe historical copies, adds public files, rejects unsafe overlays, and prepares temporary home directories.</dd>
+          <dt>auth.py</dt><dd>Owns catalog-selected login, credential narrowing, profile validation and staging, and separately injected secrets.</dd>
+          <dt>harnesses.py</dt><dd>Builds Copilot, OpenCode, Oh My Pi, and Pi commands, prepares their environments, reads usage, and checks model identity.</dd>
           <dt>telemetry.py</dt><dd>Standardizes token and cost data from JSON event logs and extracts provider and model identity.</dd>
           <dt>docker.py</dt><dd>Builds images and runs restricted containers with explicit files, settings, network access, logs, and cleanup.</dd>
           <dt>evaluator.py</dt><dd>Reads the structured requirement-group report and checks that it agrees with the evaluator's exit code.</dd>
@@ -971,7 +979,7 @@ raise SystemExit(0 if all(groups.values()) and not candidate_error else 1)</pre>
             <tbody>
               <tr><th>Discovery / scaffold / prepare / accept</th><td>Coordinator agent after the relevant user gate.</td><td>Auditable helpers and developer diagnosis.</td></tr>
               <tr><th><code>validate</code>, <code>build</code>, <code>validate-tasks</code></th><td>Coordinator agent during task creation.</td><td>CI, maintenance, and focused manual diagnosis.</td></tr>
-              <tr><th><code>auth login</code></th><td>User, because the provider may require an interactive browser or device flow.</td><td>Explicit credential creation without source exposure.</td></tr>
+              <tr><th><code>auth login</code></th><td>User, because the provider may require an interactive headless or device-code flow.</td><td>Explicit credential creation without source exposure.</td></tr>
               <tr><th><code>doctor</code>, <code>run</code></th><td>Coordinator after explicit run authorization.</td><td>Automation and direct hands-on experiments remain supported.</td></tr>
             </tbody>
           </table>

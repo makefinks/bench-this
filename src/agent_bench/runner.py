@@ -144,7 +144,7 @@ class BenchmarkRunner:
                 (
                     "image",
                     False,
-                    f"missing {self.project.image.name!r}; run `python benchmarks/run.py build`",
+                    f"missing {self.project.image.name!r}; run `./benchmarks/run.py build`",
                 )
             )
             return checks

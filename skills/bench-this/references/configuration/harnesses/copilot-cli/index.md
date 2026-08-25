@@ -29,10 +29,10 @@ without a provider argument:
 ./benchmarks/run.py auth login --harness copilot --profile copilot
 ```
 
-In an agent-assisted flow, start the runner command, relay any device URL and one-time code, and
-wait
-for the user to finish authorization. Never ask for or handle a password. If the flow requests an
-API key rather than device authorization, have the user execute the command directly.
+Tell the user to run this interactive command in a real terminal and choose the headless or
+device-code option. A device-code URL may be opened in the host browser, but callback-based browser
+login cannot return to the isolated container. The pinned Copilot executable runs in the benchmark
+image. You should not drive its TTY or handle passwords, device codes, or provider responses.
 
 After a newly completed login, verify only the matching profile and harness:
 
