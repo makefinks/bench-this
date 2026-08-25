@@ -6,7 +6,7 @@ import sys
 from statistics import mean
 from pathlib import Path
 
-from .auth import login
+from .auth import login, probe_bedrock_wire_api
 from .catalog import HARNESS_CATALOG
 from .config import (
     discover_configurations,
@@ -91,6 +91,13 @@ def _parser() -> argparse.ArgumentParser:
     verify = auth_commands.add_parser("verify")
     verify.add_argument("--profile", required=True)
     verify.add_argument("--harness", choices=sorted(HARNESS_CATALOG))
+    probe = auth_commands.add_parser(
+        "probe", help="probe Bedrock Mantle wire API support for one model"
+    )
+    probe.add_argument("--profile", required=True)
+    probe.add_argument("--harness", choices=sorted(HARNESS_CATALOG), default="copilot")
+    probe.add_argument("--model", required=True, help="pinned Mantle model ID")
+    probe.add_argument("--region", required=True, help="Bedrock Mantle region")
     return parser
 
 
@@ -226,6 +233,11 @@ def main(argv=None) -> int:
                     f"Verified {config.auth_profile}/{config.harness}: "
                     f"{config.qualified_model}"
                 )
+        elif args.command == "auth" and args.auth_command == "probe":
+            result = probe_bedrock_wire_api(
+                args.profile, args.harness, args.model, args.region
+            )
+            print(json.dumps(result, sort_keys=True))
         return 0
     except (BenchmarkError, KeyError) as exc:
         print(f"error: {exc}", file=sys.stderr)

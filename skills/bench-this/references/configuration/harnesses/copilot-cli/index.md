@@ -4,9 +4,9 @@ Read this reference after the general [treatment configuration](../../../configu
 when the selected harness is native GitHub Copilot CLI. Treat native GitHub Copilot CLI as
 `harness: copilot`; it is neither OpenCode with provider `github-copilot` nor the `gh` CLI.
 
-## Generate the baseline
+## Choose the provider path
 
-Omit the provider and select the Copilot harness explicitly:
+Omit the provider to use a GitHub Copilot account:
 
 ```bash
 python <skill-directory>/scripts/configure.py <repository> \
@@ -15,15 +15,18 @@ python <skill-directory>/scripts/configure.py <repository> \
   --auth-profile copilot
 ```
 
-The generator creates native Copilot manifests without a provider or OpenCode configuration file.
-Local skills work with all supported harnesses. Copilot CLI configurations do not use a provider;
-OpenCode, Oh My Pi, and Pi configurations require one. The command refuses to overwrite an existing
-configuration.
+Use a pinned model for this providerless path.
 
-## Authentication
+For Amazon Bedrock BYOK, also read the
+[Copilot Amazon Bedrock reference](providers/amazon-bedrock.md). This path requires provider
+`amazon-bedrock`, a pinned model, and a region.
 
-Native Copilot CLI uses its `/login` device flow. For manual setup, give the user the runner command
-without a provider argument:
+Local skills work with both paths. The command refuses to overwrite an existing configuration.
+
+## GitHub Copilot authentication
+
+The providerless path uses Copilot CLI's `/login` device flow. For manual setup, give the user the
+runner command without a provider argument:
 
 ```bash
 ./benchmarks/run.py auth login --harness copilot --profile copilot
@@ -41,7 +44,6 @@ After a newly completed login, verify only the matching profile and harness:
 ```
 
 Reject an authentication or subscription combination that cannot select the configured model.
-Native Copilot CLI accepts either a pinned model ID or the explicit `auto` selection.
 
 ## Optional native integrations
 

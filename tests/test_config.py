@@ -388,6 +388,34 @@ auth_profile: bedrock
     )
 
 
+def test_schema_accepts_copilot_amazon_bedrock_provider(tmp_path):
+    root = tmp_path / "copilot-bedrock"
+    (root / "harness").mkdir(parents=True)
+    (root / "workspace").mkdir()
+    path = write(
+        root / "configuration.yaml",
+        """id: copilot-bedrock
+harness: copilot
+provider: amazon-bedrock
+model: zai.glm-4.7-flash
+region: eu-central-1
+harness_config: harness
+workspace_config: workspace
+auth_profile: bedrock
+""",
+    )
+
+    config = load_configuration(path)
+
+    assert config.provider == "amazon-bedrock"
+    assert config.region == "eu-central-1"
+    assert config.qualified_model == "zai.glm-4.7-flash"
+
+    path.write_text(path.read_text().replace("region: eu-central-1\n", ""))
+    with pytest.raises(ConfigurationError, match="region"):
+        load_configuration(path)
+
+
 @pytest.mark.parametrize("region", [None, "", "us-east", 1])
 def test_schema_requires_valid_region_for_amazon_bedrock(tmp_path, region):
     root = tmp_path / "amazon-bedrock"
@@ -577,7 +605,7 @@ model: auto""",
 
     with pytest.raises(ConfigurationError, match="Pi requires provider"):
         load_configuration(missing)
-    with pytest.raises(ConfigurationError, match="provider does not apply"):
+    with pytest.raises(ConfigurationError, match="copilot provider must be one of"):
         load_configuration(forbidden)
 
 
@@ -602,19 +630,6 @@ agent: build""",
 provider: github-copilot
 model: auto""",
         ),
-    ],
-)
-def test_treatment_schema_allows_auto_only_for_copilot_selections(
-    tmp_path, config_id, selection
-):
-    assert load_configuration(
-        treatment_manifest(tmp_path, config_id, selection)
-    ).model == "auto"
-
-
-@pytest.mark.parametrize(
-    ("config_id", "selection"),
-    [
         (
             "openai-auto",
             """harness: opencode
@@ -627,6 +642,13 @@ agent: build""",
             """harness: pi
 provider: github-copilot
 model: auto""",
+        ),
+        (
+            "copilot-bedrock-auto",
+            """harness: copilot
+provider: amazon-bedrock
+model: auto
+region: us-east-1""",
         ),
     ],
 )

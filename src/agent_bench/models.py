@@ -117,6 +117,7 @@ class TreatmentConfig:
     provider: Optional[str] = None
     agent: Optional[str] = None
     region: Optional[str] = None
+    wire_api: Optional[str] = None
     github_copilot_business: bool = False
 
     @property

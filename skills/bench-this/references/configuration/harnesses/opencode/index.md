@@ -77,7 +77,7 @@ After a newly completed login, verify only the matching profile and harness:
 ```
 
 Reject an authentication or subscription combination that cannot select the configured model.
-OpenCode with GitHub Copilot may use `auto`; every other OpenCode provider requires a pinned model.
+Every OpenCode provider requires a pinned model.
 
 ## Optional native integrations
 

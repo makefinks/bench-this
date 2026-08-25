@@ -100,7 +100,9 @@ COMMON_REQUIRED_FIELDS = frozenset(
     }
 )
 COMMON_OPTIONAL_FIELDS = frozenset({"arguments"})
-BEDROCK_FIELDS = frozenset({"region"})
+BEDROCK_REQUIRED_FIELDS = frozenset({"region"})
+BEDROCK_OPTIONAL_FIELDS = frozenset({"wire_api"})
+BEDROCK_FIELDS = BEDROCK_REQUIRED_FIELDS | BEDROCK_OPTIONAL_FIELDS
 GITHUB_COPILOT_FIELDS = frozenset({"github_copilot_business"})
 
 
@@ -128,7 +130,7 @@ BEDROCK_PROVIDER = _provider(
     AuthPolicy.BEDROCK_BEARER,
     AMAZON_BEDROCK_PROVIDER,
     allowed_fields=BEDROCK_FIELDS,
-    required_fields=BEDROCK_FIELDS,
+    required_fields=BEDROCK_REQUIRED_FIELDS,
 )
 
 HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
@@ -143,11 +145,13 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
                         None,
                         AuthPolicy.NATIVE_COPILOT,
                         "github-copilot",
-                        allow_automatic_model=True,
-                    )
+                    ),
+                    AMAZON_BEDROCK_PROVIDER: BEDROCK_PROVIDER,
                 }
             ),
-            allowed_fields=COMMON_REQUIRED_FIELDS | COMMON_OPTIONAL_FIELDS,
+            allowed_fields=COMMON_REQUIRED_FIELDS
+            | COMMON_OPTIONAL_FIELDS
+            | frozenset({"provider"}),
             required_fields=COMMON_REQUIRED_FIELDS,
             config_home=".copilot",
             installer=InstallerSpec(
@@ -169,7 +173,6 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
                         AuthPolicy.OPENCODE_PROVIDER,
                         "github-copilot",
                         allowed_fields=GITHUB_COPILOT_FIELDS,
-                        allow_automatic_model=True,
                     ),
                     "openai": _provider(
                         "openai", AuthPolicy.OPENCODE_PROVIDER, "openai"
@@ -206,7 +209,6 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
                         "github-copilot",
                         AuthPolicy.OMP_OAUTH,
                         "github-copilot",
-                        allow_automatic_model=True,
                     ),
                     "openai-codex": _provider(
                         "openai-codex", AuthPolicy.OMP_OAUTH, "openai"
@@ -299,15 +301,13 @@ def resolve_selection(
         raise ValueError(f"harness must be one of: {supported}")
     harness = HARNESS_CATALOG[harness_id]
     supplied = provider_id is not None if provider_supplied is None else provider_supplied
+    if supplied:
+        if not isinstance(provider_id, str) or provider_id not in harness.providers:
+            supported = ", ".join(
+                sorted(provider for provider in harness.providers if provider is not None)
+            )
+            raise ValueError(f"{harness.id} provider must be one of: {supported}")
+        return harness, harness.provider(provider_id)
     if None in harness.providers:
-        if supplied:
-            raise ValueError(f"provider does not apply to {harness.display_name}")
         return harness, harness.provider(None)
-    if not supplied:
-        raise ValueError(f"{harness.display_name} requires provider")
-    if not isinstance(provider_id, str) or provider_id not in harness.providers:
-        supported = ", ".join(
-            sorted(provider for provider in harness.providers if provider is not None)
-        )
-        raise ValueError(f"{harness.id} provider must be one of: {supported}")
-    return harness, harness.provider(provider_id)
+    raise ValueError(f"{harness.display_name} requires provider")

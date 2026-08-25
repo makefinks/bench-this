@@ -13,17 +13,18 @@ additional references required by the approved treatment.
 Read the row for the approved harness and provider. A provider-specific page extends the harness
 page for that combination:
 
-| Harness     | Provider                     | Additional reference                                                                                                                     |
-| ----------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| OpenCode    | openai, opencode-go          | [OpenCode](configuration/harnesses/opencode/index.md)                                                                                    |
-| OpenCode    | opencode (Zen)               | [OpenCode Zen](configuration/harnesses/opencode/index.md#opencode-zen)                                                                   |
-| OpenCode    | amazon-bedrock               | [OpenCode](configuration/harnesses/opencode/index.md) and [Amazon Bedrock](configuration/harnesses/opencode/providers/amazon-bedrock.md) |
-| OpenCode    | github-copilot               | [OpenCode](configuration/harnesses/opencode/index.md) and [GitHub Copilot](configuration/harnesses/opencode/providers/github-copilot.md) |
-| Copilot CLI | none                         | [Copilot CLI](configuration/harnesses/copilot-cli/index.md)                                                                              |
-| Oh My Pi    | github-copilot, openai-codex | [Oh My Pi](configuration/harnesses/omp/index.md)                                                                                         |
-| Oh My Pi    | amazon-bedrock               | [Oh My Pi](configuration/harnesses/omp/index.md) and [Amazon Bedrock](configuration/harnesses/omp/providers/amazon-bedrock.md)           |
-| Pi          | github-copilot, openai-codex | [Pi](configuration/harnesses/pi/index.md)                                                                                                |
-| Pi          | amazon-bedrock               | [Pi](configuration/harnesses/pi/index.md) and [Amazon Bedrock](configuration/harnesses/pi/providers/amazon-bedrock.md)                   |
+| Harness     | Provider                     | Additional reference                                                                                                                              |
+| ----------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenCode    | openai, opencode-go          | [OpenCode](configuration/harnesses/opencode/index.md)                                                                                             |
+| OpenCode    | opencode (Zen)               | [OpenCode Zen](configuration/harnesses/opencode/index.md#opencode-zen)                                                                            |
+| OpenCode    | amazon-bedrock               | [OpenCode](configuration/harnesses/opencode/index.md) and [Amazon Bedrock](configuration/harnesses/opencode/providers/amazon-bedrock.md)          |
+| OpenCode    | github-copilot               | [OpenCode](configuration/harnesses/opencode/index.md) and [GitHub Copilot](configuration/harnesses/opencode/providers/github-copilot.md)          |
+| Copilot CLI | none                         | [Copilot CLI](configuration/harnesses/copilot-cli/index.md)                                                                                       |
+| Copilot CLI | amazon-bedrock               | [Copilot CLI](configuration/harnesses/copilot-cli/index.md) and [Amazon Bedrock](configuration/harnesses/copilot-cli/providers/amazon-bedrock.md) |
+| Oh My Pi    | github-copilot, openai-codex | [Oh My Pi](configuration/harnesses/omp/index.md)                                                                                                  |
+| Oh My Pi    | amazon-bedrock               | [Oh My Pi](configuration/harnesses/omp/index.md) and [Amazon Bedrock](configuration/harnesses/omp/providers/amazon-bedrock.md)                    |
+| Pi          | github-copilot, openai-codex | [Pi](configuration/harnesses/pi/index.md)                                                                                                         |
+| Pi          | amazon-bedrock               | [Pi](configuration/harnesses/pi/index.md) and [Amazon Bedrock](configuration/harnesses/pi/providers/amazon-bedrock.md)                            |
 
 ## Treatment and execution references
 
@@ -93,8 +94,7 @@ request to execute the treatment authorizes its required source-free identity pr
 not authorize replacing a missing profile through a new login.
 
 Reject an authentication or subscription combination that cannot select the configured model.
-Native Copilot CLI, OpenCode with GitHub Copilot, and OMP with GitHub Copilot may use `auto`; every
-other catalog selection requires a pinned model.
+Every catalog selection requires a pinned model.
 
 ## Continue to execution
 

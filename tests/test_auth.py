@@ -10,6 +10,7 @@ from agent_bench.auth import (
     auth_strategy_for,
     BEDROCK_CREDENTIALS_FILE,
     BEDROCK_TOKEN_ENVIRONMENT_VARIABLE,
+    COPILOT_BEDROCK_TOKEN_ENVIRONMENT_VARIABLE,
     OMP_NATIVE_DATABASE,
     OPENCODE_AUTH_FILE,
     PI_AUTH_FILE,
@@ -132,6 +133,30 @@ def test_bedrock_profile_injects_token_without_staging_secret_file(tmp_path):
         BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"
     }
     assert not (home / BEDROCK_CREDENTIALS_FILE).exists()
+
+
+def test_copilot_bedrock_profile_maps_stored_token_to_byok_environment(tmp_path):
+    auth_root = tmp_path / "auth"
+    profile = store_bedrock_credential(
+        "bedrock", "copilot", "fixture-token", auth_root
+    )
+    config = TreatmentConfig(
+        **{
+            **bedrock_config(tmp_path).__dict__,
+            "harness": "copilot",
+            "agent": None,
+        }
+    )
+
+    prepared = prepare_home(config, tmp_path / "copilot-home", auth_root)
+
+    assert json.loads(
+        (profile / BEDROCK_CREDENTIALS_FILE).read_text(encoding="utf-8")
+    ) == {BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"}
+    assert dict(prepared.secret_environment) == {
+        COPILOT_BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"
+    }
+    assert not (prepared.home / BEDROCK_CREDENTIALS_FILE).exists()
 
 
 def test_bedrock_profile_rejects_broadened_or_invalid_credentials(tmp_path):

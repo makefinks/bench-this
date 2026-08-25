@@ -73,6 +73,7 @@ def create_configuration(
     provider: Optional[str] = None,
     github_copilot_business: bool = False,
     bedrock_region: Optional[str] = None,
+    bedrock_wire_api: Optional[str] = None,
     agent: Optional[str] = None,
     arguments: Iterable[str] = (),
     config_id: Optional[str] = None,
@@ -103,6 +104,13 @@ def create_configuration(
             )
     elif bedrock_region is not None:
         raise ValueError("--bedrock-region applies only to Amazon Bedrock")
+    if bedrock_wire_api is not None and "wire_api" not in provider_spec.allowed_fields:
+        raise ValueError("--bedrock-wire-api applies only to Amazon Bedrock")
+    if bedrock_wire_api is not None and bedrock_wire_api not in {
+        "completions",
+        "responses",
+    }:
+        raise ValueError("--bedrock-wire-api must be one of: completions, responses")
     if agent is not None and "agent" not in harness_spec.allowed_fields:
         raise ValueError(f"--agent does not apply to {harness_spec.display_name}")
     arguments = list(arguments)
@@ -147,6 +155,8 @@ def create_configuration(
             manifest["agent"] = agent
         if bedrock_region is not None:
             manifest["region"] = bedrock_region
+        if bedrock_wire_api is not None:
+            manifest["wire_api"] = bedrock_wire_api
         if github_copilot_business:
             manifest["github_copilot_business"] = True
         manifest.update(
@@ -195,6 +205,9 @@ def main() -> int:
     )
     parser.add_argument("--github-copilot-business", action="store_true")
     parser.add_argument("--bedrock-region")
+    parser.add_argument(
+        "--bedrock-wire-api", choices=["completions", "responses"]
+    )
     parser.add_argument("--agent")
     parser.add_argument("--argument", action="append", default=[])
     parser.add_argument("--model", required=True)
@@ -211,6 +224,7 @@ def main() -> int:
             provider=args.provider,
             github_copilot_business=args.github_copilot_business,
             bedrock_region=args.bedrock_region,
+            bedrock_wire_api=args.bedrock_wire_api,
             agent=args.agent,
             arguments=args.argument,
             config_id=args.config_id,

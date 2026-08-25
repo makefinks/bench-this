@@ -292,6 +292,32 @@ def test_creates_native_copilot_configuration(tmp_path: Path) -> None:
     assert (root / "harness").is_dir()
 
 
+def test_creates_copilot_bedrock_configuration(tmp_path: Path) -> None:
+    repository = scaffold(tmp_path)
+
+    result = run_configure(
+        repository,
+        "--harness",
+        "copilot",
+        "--provider",
+        "amazon-bedrock",
+        "--bedrock-region",
+        "eu-west-1",
+        "--model",
+        "zai.glm-4.7-flash",
+        "--auth-profile",
+        "bedrock",
+    )
+
+    assert result.returncode == 0, result.stderr
+    root = repository / "benchmarks/configurations/copilot-amazon-bedrock-zai-glm-4-7-flash"
+    manifest = (root / "configuration.yaml").read_text()
+    assert "harness: copilot" in manifest
+    assert "provider: amazon-bedrock" in manifest
+    assert "region: eu-west-1" in manifest
+    assert list((root / "harness").iterdir()) == []
+
+
 def test_creates_omp_bedrock_configuration(tmp_path: Path) -> None:
     repository = scaffold(tmp_path)
     result = run_configure(
@@ -407,7 +433,7 @@ def test_rejects_provider_for_native_copilot(tmp_path: Path) -> None:
     )
 
     assert result.returncode != 0
-    assert "provider does not apply" in result.stderr
+    assert "copilot provider must be one of: amazon-bedrock" in result.stderr
 
 
 def test_refuses_to_overwrite_configuration(tmp_path: Path) -> None:

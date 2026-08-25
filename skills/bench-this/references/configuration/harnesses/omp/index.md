@@ -5,7 +5,7 @@ keep provider credentials in the runner-owned authentication profile. Read a pro
 reference too when the routing table identifies one.
 
 Supported providers are `github-copilot`, `openai-codex`, and `amazon-bedrock`.
-GitHub Copilot may use `auto`; OpenAI Codex and Amazon Bedrock require pinned models.
+Every provider requires a pinned model.
 
 ```bash
 python <skill-directory>/scripts/configure.py <repository> \

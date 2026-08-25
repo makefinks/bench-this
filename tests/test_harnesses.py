@@ -33,6 +33,27 @@ def test_copilot_command_pins_model_and_disables_remote(tmp_path):
     assert "--output-format=json" in command
 
 
+def test_copilot_bedrock_uses_mantle_responses_without_exposing_secret(tmp_path):
+    value = TreatmentConfig(
+        **{
+            **config(tmp_path).__dict__,
+            "provider": "amazon-bedrock",
+            "model": "zai.glm-4.7-flash",
+            "region": "eu-west-1",
+        }
+    )
+
+    environment = CopilotAdapter(value).environment()
+
+    assert environment["COPILOT_PROVIDER_BASE_URL"] == (
+        "https://bedrock-mantle.eu-west-1.api.aws/v1"
+    )
+    assert environment["COPILOT_PROVIDER_TYPE"] == "openai"
+    assert environment["COPILOT_PROVIDER_WIRE_API"] == "completions"
+    assert environment["COPILOT_OFFLINE"] == "true"
+    assert "COPILOT_PROVIDER_API_KEY" not in environment
+
+
 def test_opencode_identity_requires_provider_and_model(tmp_path):
     adapter = OpenCodeAdapter(config(tmp_path, "opencode"))
     adapter.verify_identity('{"providerID":"github-copilot","modelID":"gpt-fixed"}')
@@ -59,44 +80,6 @@ def test_model_mismatch_is_fail_closed(tmp_path):
     adapter = CopilotAdapter(config(tmp_path))
     with pytest.raises(IdentityMismatch):
         adapter.verify_identity('{"model":"fallback-model"}')
-
-
-def test_native_copilot_auto_accepts_reported_resolved_model(tmp_path):
-    value = TreatmentConfig(**{**config(tmp_path).__dict__, "model": "auto"})
-
-    assert CopilotAdapter(value).verify_identity(
-        '{"model":"resolved-model"}'
-    ) == (None, "resolved-model")
-
-
-def test_opencode_copilot_auto_still_requires_selected_provider(tmp_path):
-    value = TreatmentConfig(
-        **{**config(tmp_path, "opencode").__dict__, "model": "auto"}
-    )
-    adapter = OpenCodeAdapter(value)
-
-    adapter.verify_identity(
-        '{"providerID":"github-copilot","modelID":"resolved-model"}'
-    )
-    with pytest.raises(IdentityMismatch):
-        adapter.verify_identity(
-            '{"providerID":"openai","modelID":"resolved-model"}'
-        )
-
-
-def test_omp_copilot_auto_accepts_reported_resolved_model(tmp_path):
-    value = TreatmentConfig(
-        **{
-            **config(tmp_path, "omp").__dict__,
-            "provider": "github-copilot",
-            "model": "auto",
-        }
-    )
-
-    OmpAdapter(value).verify_identity(
-        '{"type":"message_end","message":{"role":"assistant",'
-        '"provider":"github-copilot","model":"resolved-model"}}'
-    )
 
 
 def test_opencode_openai_identity_is_accepted_when_pinned(tmp_path):

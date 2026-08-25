@@ -72,7 +72,21 @@ auth_profile: copilot
 arguments: []
 ```
 
-Native Copilot CLI may use `model: auto`. Other providerless values are rejected.
+Every Copilot treatment requires a pinned model. A Copilot Bedrock treatment uses:
+
+```yaml
+id: copilot-bedrock-model-a
+harness: copilot
+provider: amazon-bedrock
+model: zai.glm-model-a
+region: us-east-1
+harness_config: harness
+workspace_config: workspace
+auth_profile: bedrock
+arguments: []
+```
+
+The runner supplies its Mantle BYOK environment without a native configuration file.
 
 ## OpenCode configuration
 
@@ -88,7 +102,7 @@ auth_profile: copilot
 arguments: []
 ```
 
-OpenCode with GitHub Copilot may use `model: auto`. Add
+Every OpenCode treatment requires a pinned model. Add
 `github_copilot_business: true` only for a confirmed Copilot Business account.
 
 For OpenCode authenticated through its OpenAI OAuth flow, use:
@@ -159,8 +173,8 @@ The corresponding `harness/opencode.json` must pin the AWS region under
 `AWS_BEARER_TOKEN_BEDROCK`; never put that token in YAML or `opencode.json`.
 
 Every treatment manifest uses one strict flat schema. The loader rejects unknown fields, fields that
-do not apply to the selected catalog entry, missing providers, provider fields on native Copilot,
-and automatic models outside the three GitHub Copilot selections.
+do not apply to the selected catalog entry, missing providers, unsupported providers, and
+non-pinned models.
 
 ## Oh My Pi configuration
 
@@ -175,7 +189,7 @@ auth_profile: codex
 arguments: []
 ```
 
-OMP with GitHub Copilot may use `model: auto`. OMP Amazon Bedrock configurations use
+Every OMP treatment requires a pinned model. Amazon Bedrock configurations use
 `provider: amazon-bedrock` and add the required `region`.
 
 ## Pi configuration

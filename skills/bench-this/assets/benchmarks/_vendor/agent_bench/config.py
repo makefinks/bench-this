@@ -21,6 +21,7 @@ from .models import (
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 COMMIT_PATTERN = re.compile(r"^[0-9a-fA-F]{7,64}$")
 AWS_REGION_PATTERN = re.compile(r"^[a-z]{2}(?:-[a-z0-9]+)+-[0-9]+$")
+ALLOWED_WIRE_APIS = frozenset({"completions", "responses"})
 
 
 def _load_mapping(path: Path) -> Dict[str, Any]:
@@ -337,6 +338,14 @@ def load_configuration(path: Path) -> TreatmentConfig:
         raise ConfigurationError(
             f"{path}: Amazon Bedrock configurations require a valid region"
         )
+    wire_api = data.get("wire_api")
+    if wire_api is not None:
+        if not isinstance(wire_api, str) or wire_api not in ALLOWED_WIRE_APIS:
+            raise ConfigurationError(
+                f"{path}: wire_api must be one of: completions, responses"
+            )
+    elif "wire_api" in selected_fields:
+        wire_api = "completions"
     github_copilot_business = data.get("github_copilot_business", False)
     if not isinstance(github_copilot_business, bool):
         raise ConfigurationError(
@@ -351,6 +360,7 @@ def load_configuration(path: Path) -> TreatmentConfig:
         provider=provider_id,
         agent=agent,
         region=region,
+        wire_api=wire_api,
         github_copilot_business=github_copilot_business,
         harness_config=harness_config,
         workspace_config=workspace_config,

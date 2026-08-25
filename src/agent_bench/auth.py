@@ -12,6 +12,8 @@ import shutil
 import sqlite3
 import tempfile
 import time
+import urllib.error
+import urllib.request
 from types import MappingProxyType
 from typing import Callable, Mapping, Optional
 
@@ -32,6 +34,7 @@ from .workspace import _reject_symlinks, copy_contents
 PROFILE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 BEDROCK_CREDENTIALS_FILE = Path("credentials.json")
 BEDROCK_TOKEN_ENVIRONMENT_VARIABLE = "AWS_BEARER_TOKEN_BEDROCK"
+COPILOT_BEDROCK_TOKEN_ENVIRONMENT_VARIABLE = "COPILOT_PROVIDER_API_KEY"
 OMP_NATIVE_DATABASE = Path(".omp/agent/agent.db")
 OMP_PROVIDER_ENVIRONMENT = {
     "github-copilot": "COPILOT_GITHUB_TOKEN",
@@ -564,9 +567,14 @@ class BedrockBearerAuth(AuthStrategy):
             raise ConfigurationError(
                 "Amazon Bedrock auth profile must contain one valid bearer token"
             ) from exc
+        target_name = (
+            COPILOT_BEDROCK_TOKEN_ENVIRONMENT_VARIABLE
+            if config.harness == "copilot"
+            else environment_name
+        )
         return ValidatedAuth(
             profile,
-            MappingProxyType({environment_name: token}),
+            MappingProxyType({target_name: token}),
         )
 
     def stage(self, config, validated, destination):
@@ -638,6 +646,125 @@ def prepare_home(
         profile=validated.profile,
         secret_environment=validated.secret_environment,
     )
+
+
+def probe_bedrock_wire_api(
+    profile_name: str,
+    harness_id: str,
+    model: str,
+    region: str,
+    auth_root: Optional[Path] = None,
+    timeout: int = 20,
+) -> dict:
+    """Probe Mantle for one model to determine supported wire APIs."""
+
+    if not PROFILE_PATTERN.fullmatch(profile_name):
+        raise ConfigurationError(
+            "profile must use lowercase letters, digits, and hyphens"
+        )
+    if harness_id not in HARNESS_CATALOG:
+        raise ConfigurationError(f"unknown harness: {harness_id}")
+    try:
+        HARNESS_CATALOG[harness_id].provider(AMAZON_BEDROCK_PROVIDER)
+    except KeyError as exc:
+        raise ConfigurationError(
+            f"unsupported Bedrock bearer-token harness: {harness_id}"
+        ) from exc
+    if not isinstance(model, str) or not model.strip():
+        raise ConfigurationError("model must be a non-empty string")
+    if not isinstance(region, str) or not re.fullmatch(
+        r"^[a-z]{2}(?:-[a-z0-9]+)+-[0-9]+$", region
+    ):
+        raise ConfigurationError(f"invalid Bedrock region: {region!r}")
+    profile = auth_profile_root(profile_name, harness_id, auth_root)
+    if not profile.is_dir():
+        raise InfrastructureError(f"authentication profile not found: {profile}")
+    _reject_symlinks(profile, "auth_profile")
+    credential_path = profile / BEDROCK_CREDENTIALS_FILE
+    try:
+        credentials = json.loads(credential_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ConfigurationError(
+            f"invalid Amazon Bedrock credential file: {credential_path}"
+        ) from exc
+    token = credentials.get(BEDROCK_TOKEN_ENVIRONMENT_VARIABLE)
+    if not isinstance(credentials, dict) or set(credentials) != {
+        BEDROCK_TOKEN_ENVIRONMENT_VARIABLE
+    }:
+        raise ConfigurationError(
+            "Amazon Bedrock auth profile must contain one valid bearer token"
+        )
+    token = _one_line_secret(token, "Amazon Bedrock auth profile bearer token")
+
+    def _probe(url: str, payload: dict) -> tuple[bool, int | None, str | None]:
+        """Return support flag; raise only on transport/auth failures."""
+
+        data = json.dumps(payload).encode("utf-8")
+        request = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+                response.read()
+                return True, response.status, None
+        except urllib.error.HTTPError as exc:  # noqa: PERF203
+            body = exc.read().decode("utf-8", "replace")
+            lower = body.lower()
+            if exc.code == 400 and (
+                "does not support" in lower or "isn't supported" in lower
+            ):
+                return False, exc.code, body[:500]
+            # Surface auth/region/config errors directly.
+            raise InfrastructureError(
+                f"Bedrock probe failed for {url}: HTTP {exc.code}: {body[:500]}"
+            ) from exc
+        except OSError as exc:
+            raise InfrastructureError(
+                f"Bedrock probe failed for {url}: {exc}"
+            ) from exc
+
+    completions_ok, completions_status, completions_error = _probe(
+        f"https://bedrock-mantle.{region}.api.aws/v1/chat/completions",
+        {"model": model, "messages": [{"role": "user", "content": "ping"}], "max_tokens": 16},
+    )
+    responses_ok, responses_status, responses_error = _probe(
+        f"https://bedrock-mantle.{region}.api.aws/v1/responses",
+        {"model": model, "input": "ping", "max_output_tokens": 16},
+    )
+    if completions_ok and responses_ok:
+        recommended = "completions"
+    elif completions_ok:
+        recommended = "completions"
+    elif responses_ok:
+        recommended = "responses"
+    else:
+        recommended = None
+    return {
+        "model": model,
+        "region": region,
+        "profile": profile_name,
+        "harness": harness_id,
+        "completions": completions_ok,
+        "responses": responses_ok,
+        "wire_api": recommended,
+        "details": {
+            "completions": {
+                "ok": completions_ok,
+                "status": completions_status,
+                "error": completions_error,
+            },
+            "responses": {
+                "ok": responses_ok,
+                "status": responses_status,
+                "error": responses_error,
+            },
+        },
+    }
 
 
 def login(

@@ -21,6 +21,7 @@ def test_catalog_declares_complete_supported_matrix():
 
     assert selections == {
         ("copilot", None),
+        ("copilot", "amazon-bedrock"),
         ("opencode", "amazon-bedrock"),
         ("opencode", "github-copilot"),
         ("opencode", "openai"),
@@ -77,11 +78,7 @@ def test_only_copilot_selections_allow_automatic_model():
         if provider.allow_automatic_model
     }
 
-    assert automatic == {
-        ("copilot", None),
-        ("opencode", "github-copilot"),
-        ("omp", "github-copilot"),
-    }
+    assert automatic == set()
 
 
 def test_adapter_registry_is_complete_and_has_no_orphans():
@@ -106,7 +103,12 @@ def test_catalog_resolves_provider_contracts_for_all_consumers():
     harness, provider = resolve_selection("copilot")
     assert (harness.id, provider.id) == ("copilot", None)
 
-    with pytest.raises(ValueError, match="provider does not apply"):
+    harness, provider = resolve_selection("copilot", "amazon-bedrock")
+    assert (harness.id, provider.id) == ("copilot", "amazon-bedrock")
+
+    with pytest.raises(ValueError, match="copilot provider must be one of: amazon-bedrock"):
         resolve_selection("copilot", "github-copilot")
+    with pytest.raises(ValueError, match="copilot provider must be one of: amazon-bedrock"):
+        resolve_selection("copilot", None, provider_supplied=True)
     with pytest.raises(ValueError, match="Pi requires provider"):
         resolve_selection("pi")

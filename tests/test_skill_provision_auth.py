@@ -25,6 +25,7 @@ def run_provision(
     home: Path,
     token: str | None,
     profile: str = "bedrock",
+    harness: str = "opencode",
 ) -> subprocess.CompletedProcess[str]:
     environment = os.environ.copy()
     environment["HOME"] = str(home)
@@ -38,7 +39,7 @@ def run_provision(
             str(SCRIPT),
             str(repository),
             "--harness",
-            "opencode",
+            harness,
             "--provider",
             "amazon-bedrock",
             "--profile",
@@ -100,6 +101,30 @@ def test_provisions_bedrock_profile_without_interactive_input(tmp_path: Path) ->
     }
     assert "fixture-token" not in result.stdout
     assert "fixture-token" not in result.stderr
+
+
+def test_provisions_copilot_bedrock_profile(tmp_path: Path) -> None:
+    repository = tmp_path / "project"
+    repository.mkdir()
+    scaffold(repository)
+    home = tmp_path / "home"
+
+    result = run_provision(
+        repository, home, "fixture-token", harness="copilot"
+    )
+
+    assert result.returncode == 0, result.stderr
+    credentials = json.loads(
+        (
+            home
+            / ".agent-bench/auth"
+            / "bedrock/copilot"
+            / BEDROCK_CREDENTIALS_FILE
+        ).read_text(encoding="utf-8")
+    )
+    assert credentials == {
+        BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"
+    }
 
 
 def test_uses_skill_runner_instead_of_target_repository_code(tmp_path: Path) -> None:

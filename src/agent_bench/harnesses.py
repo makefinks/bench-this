@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Tuple
 
-from .catalog import AdapterKind
+from .catalog import AMAZON_BEDROCK_PROVIDER, AdapterKind
 from .errors import ConfigurationError, IdentityMismatch, InfrastructureError
 from .models import TreatmentConfig, Usage
 from .telemetry import (
@@ -54,7 +54,7 @@ class HarnessAdapter(ABC):
         """Abort when the resolved model is missing or differs from the pin."""
 
         provider, model = extract_identity(f"{stdout}\n{stderr}")
-        if self.config.model != "auto" and model != self.config.model:
+        if model != self.config.model:
             raise IdentityMismatch(
                 f"expected model {self.config.model!r}, harness reported {model!r}"
             )
@@ -94,7 +94,7 @@ class CopilotAdapter(HarnessAdapter):
     def environment(self) -> Dict[str, str]:
         """Return an allowlist rather than inheriting host provider credentials."""
 
-        return {
+        environment = {
             "HOME": "/home/bench",
             "COPILOT_HOME": "/home/bench/.copilot",
             "COPILOT_MODEL": self.config.model,
@@ -102,6 +102,19 @@ class CopilotAdapter(HarnessAdapter):
             "COPILOT_OTEL_FILE_EXPORTER_PATH": "/home/bench/copilot-otel.jsonl",
             "NO_COLOR": "1",
         }
+        if self.config.provider == AMAZON_BEDROCK_PROVIDER:
+            wire_api = self.config.wire_api or "completions"
+            environment.update(
+                {
+                    "COPILOT_PROVIDER_BASE_URL": (
+                        f"https://bedrock-mantle.{self.config.region}.api.aws/v1"
+                    ),
+                    "COPILOT_PROVIDER_TYPE": "openai",
+                    "COPILOT_PROVIDER_WIRE_API": wire_api,
+                    "COPILOT_OFFLINE": "true",
+                }
+            )
+        return environment
 
     def telemetry_path(self, home: Path) -> Optional[Path]:
         """Locate Copilot's file exporter output after the container exits."""
@@ -155,8 +168,7 @@ class OpenCodeAdapter(HarnessAdapter):
         unexpected = [
             f"{provider}/{model}"
             for provider, model in identities
-            if provider != self.config.provider
-            or (self.config.model != "auto" and model != self.config.model)
+            if provider != self.config.provider or model != self.config.model
         ]
         if unexpected:
             raise IdentityMismatch(
@@ -187,8 +199,7 @@ class _PiJsonAdapter(HarnessAdapter):
         unexpected = [
             f"{provider}/{model}"
             for provider, model in identities
-            if provider != self.config.provider
-            or (self.config.model != "auto" and model != self.config.model)
+            if provider != self.config.provider or model != self.config.model
         ]
         if unexpected:
             raise IdentityMismatch(

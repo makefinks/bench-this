@@ -29,12 +29,13 @@ npx skills add makefinks/bench-this
 
 | Harness            | GitHub Copilot (`github-copilot`) | OpenAI Codex (`openai-codex`) | OpenCode Zen (`opencode`) | OpenCode Go (`opencode-go`) | Amazon Bedrock (`amazon-bedrock`) |
 | ------------------ | --------------------------------- | ----------------------------- | ------------------------- | --------------------------- | --------------------------------- |
-| Native Copilot CLI | ✓                                 |                               |                           |                             |                                   |
+| Native Copilot CLI | ✓                                 |                               |                           |                             | ✓                                 |
 | OpenCode           | ✓                                 | ✓                             | ✓                         | ✓                           | ✓                                 |
 | Oh My Pi           | ✓                                 | ✓                             |                           |                             | ✓                                 |
 | Pi                 | ✓                                 | ✓                             |                           |                             | ✓                                 |
 
-Native Copilot CLI has no separate provider setting; it always uses your GitHub Copilot account.
+Native Copilot CLI uses your GitHub Copilot account when the provider is omitted. Its Amazon Bedrock
+integration uses Copilot BYOK with the regional Bedrock Mantle Chat Completions endpoint.
 
 See [configuration.md](skills/bench-this/references/configuration.md) for setup commands and
 reproducibility rules. Contributions that add another harness or provider are greatly appreciated.
@@ -225,14 +226,16 @@ python <skill-directory>/scripts/configure.py <target-repository> \
   --auth-profile <profile>
 ```
 
-For native Copilot CLI, the agent omits the provider:
+For native Copilot CLI with a GitHub Copilot account, the agent omits the provider:
 
 ```bash
 python <skill-directory>/scripts/configure.py <target-repository> \
   --harness copilot \
-  --model <pinned-model-or-auto> \
+  --model <pinned-model> \
   --auth-profile <profile>
 ```
+
+Copilot CLI also accepts `--provider amazon-bedrock` with the Bedrock fields below.
 
 For Pi, the agent sets the explicit provider:
 
@@ -256,8 +259,9 @@ python <skill-directory>/scripts/configure.py <target-repository> \
   --auth-profile <profile>
 ```
 
-Use `--harness pi` with the same provider, region, model, and profile fields for a Pi Bedrock
-treatment.
+Use `--harness copilot`, `--harness omp`, or `--harness pi` with the same provider, region, model,
+and profile fields for those Bedrock treatments. Copilot CLI routes models that support streaming,
+tool calling, and Mantle Chat Completions through the regional `/v1` endpoint.
 
 Copilot Business accounts used through OpenCode require the dedicated
 `--github-copilot-business` flag. The generator then writes the fixed Business API endpoint into the
@@ -265,8 +269,7 @@ treatment's OpenCode configuration; it does not accept an arbitrary base URL. A 
 as `copilot-auth` alone does not select native Copilot CLI, the OpenCode provider, or the Business
 subscription.
 
-Native Copilot CLI, OpenCode with GitHub Copilot, and OMP with GitHub Copilot accept `auto`. Other
-provider selections require a pinned model.
+Every treatment requires a pinned model.
 
 Skills, MCP servers, reasoning settings, and workspace instructions belong in separate treatment
 variants. Keeping the baseline plain makes any change in correctness, cost, or runtime attributable
@@ -295,7 +298,7 @@ device flow, a provider token, or AWS credentials. Profiles live outside the tar
 
 # Manual Amazon Bedrock setup; the user runs this in their own terminal.
 ./benchmarks/run.py auth login \
-  --harness opencode --provider amazon-bedrock --profile <profile>
+  --harness copilot --provider amazon-bedrock --profile <profile>
 ```
 
 The agent checks for the exact benchmark profile only after an approved treatment identifies the
@@ -307,9 +310,10 @@ in a real terminal and tells you to choose the CLI's headless or device-code opt
 localhost-callback options cannot return to the isolated container. A device-code URL may still be
 opened in your host browser.
 
-The non-interactive Bedrock helper accepts credentials only through its process environment.
-OpenCode, Oh My Pi, and Pi profiles inject a bearer token as `AWS_BEARER_TOKEN_BEDROCK`. The helper
-reads it from `AGENT_BENCH_BEDROCK_API_KEY`. Credentials are never written into treatment files.
+The non-interactive Bedrock helper accepts credentials only through its process environment. The
+helper reads `AGENT_BENCH_BEDROCK_API_KEY` and stores one harness-scoped profile. OpenCode, OMP,
+and Pi inject it as `AWS_BEARER_TOKEN_BEDROCK`; Copilot CLI injects it as
+`COPILOT_PROVIDER_API_KEY`. Credentials are never written into treatment files.
 
 After login, you or the agent verify the matching profile and harness before running a treatment:
 

@@ -26,5 +26,5 @@ The flag writes the fixed Business API endpoint into the provider options in
 does not accept an agent-selected base URL.
 
 Follow the normal OpenCode authentication flow in the harness reference. Reject an authentication
-or subscription combination that cannot select the configured model. This provider accepts either a
-pinned model ID or the explicit `auto` selection.
+or subscription combination that cannot select the configured model. This provider requires a
+pinned model.
