@@ -27,12 +27,12 @@ npx skills add makefinks/bench-this
 
 `bench-this` supports these harness and provider combinations:
 
-| Harness            | GitHub Copilot (`github-copilot`) | OpenAI (`openai`) | OpenAI Codex (`openai-codex`) | OpenCode Zen (`opencode`) | OpenCode Go (`opencode-go`) | Amazon Bedrock (`amazon-bedrock`) |
-| ------------------ | --------------------------------- | ----------------- | ----------------------------- | ------------------------- | --------------------------- | --------------------------------- |
-| Native Copilot CLI | ✓                                 |                   |                               |                           |                             |                                   |
-| OpenCode           | ✓                                 | ✓                 |                               | ✓                         | ✓                           | ✓                                 |
-| Oh My Pi           | ✓                                 |                   | ✓                             |                           |                             | ✓                                 |
-| Pi                 | ✓                                 |                   | ✓                             |                           |                             | ✓                                 |
+| Harness            | GitHub Copilot (`github-copilot`) | OpenAI Codex (`openai-codex`) | OpenCode Zen (`opencode`) | OpenCode Go (`opencode-go`) | Amazon Bedrock (`amazon-bedrock`) |
+| ------------------ | --------------------------------- | ----------------------------- | ------------------------- | --------------------------- | --------------------------------- |
+| Native Copilot CLI | ✓                                 |                               |                           |                             |                                   |
+| OpenCode           | ✓                                 | ✓                             | ✓                         | ✓                           | ✓                                 |
+| Oh My Pi           | ✓                                 | ✓                             |                           |                             | ✓                                 |
+| Pi                 | ✓                                 | ✓                             |                           |                             | ✓                                 |
 
 Native Copilot CLI has no separate provider setting; it always uses your GitHub Copilot account.
 
