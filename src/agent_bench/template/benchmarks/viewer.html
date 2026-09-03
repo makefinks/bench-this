@@ -8,15 +8,15 @@
     :root {
       color-scheme: dark;
       --bg: #050505;
-      --panel: rgba(8, 8, 8, .96);
-      --panel-2: #0c0c0c;
-      --text: #f5f5f3;
-      --muted: #858585;
-      --line: #292929;
-      --line-bright: #4a4a4a;
-      --accent: #ff8a5c;
-      --good: #59d6a7;
-      --bad: #f36b7f;
+      --panel: rgba(10, 8, 7, .96);
+      --panel-2: #121010;
+      --text: #FAF9F7;
+      --muted: #A8A29E;
+      --line: #2E2A28;
+      --line-bright: #6B625C;
+      --accent: #FF6B35;
+      --good: #3DDC84;
+      --bad: #FF4D6D;
     }
     * { box-sizing: border-box; }
     body {
@@ -44,7 +44,7 @@
     }
     select { min-width: min(430px, 48vw); }
     button { cursor: pointer; color: #050505; background: var(--accent); border-color: var(--accent); font-weight: 750; }
-    button:hover { background: #ffa07a; }
+    button:hover { background: #FF8A5C; }
     button:focus-visible, select:focus-visible, .source:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
     #file { position: absolute; width: 1px; height: 1px; opacity: 0; }
     .metrics { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); margin-bottom: 12px; background: var(--panel); }
@@ -61,7 +61,7 @@
     .subtle { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
     .legend { display: flex; flex-wrap: wrap; justify-content: end; gap: 14px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
     .legend span { display: inline-flex; align-items: center; gap: 6px; }
-    .swatch { width: 15px; height: 5px; background: var(--swatch); }
+    .swatch { width: 15px; height: 8px; border-radius: 2px; background: var(--swatch); }
     .axis-picker { display: flex; align-items: center; gap: 7px; }
     .axis-picker button, .labels-toggle { min-height: 30px; padding: 0 10px; color: var(--muted); background: transparent; border-color: var(--line); font-size: 10px; text-transform: uppercase; transition: color .18s, background .18s, border-color .18s; }
     .axis-picker button:hover, .labels-toggle:hover { color: var(--text); background: #111; }
@@ -70,14 +70,14 @@
     .controls-divider { width: 1px; align-self: stretch; background: var(--line-bright); }
     .token-chart { display: grid; gap: 21px; padding: 20px 16px 24px; }
     .chart-row { display: grid; grid-template-columns: minmax(200px, 27%) 1fr 80px; gap: 16px; align-items: center; }
-    .chart-name { min-width: 0; overflow: hidden; color: #c9d6e6; text-overflow: ellipsis; white-space: nowrap; }
+    .chart-name { min-width: 0; overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
     .chart-value { color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
     .track { height: 22px; padding: 3px; border: 1px solid var(--line-bright); background: #0c0c0c; }
     .stack { display: flex; height: 100%; min-width: 1px; }
     .segment { min-width: 0; height: 100%; background: var(--segment); }
-    .segment + .segment { border-left: 1px solid var(--bg); }
+    .segment + .segment { border-left: 2px solid #050505; }
     .breakdown { grid-column: 2 / 4; display: flex; flex-wrap: wrap; gap: 5px 16px; margin-top: -10px; color: var(--muted); font-size: 10px; }
-    .breakdown b { color: #cbd8e7; font-weight: 500; }
+    .breakdown b { color: var(--text); font-weight: 500; }
     .frontier { overflow-x: auto; padding: 18px 16px 20px; }
     .frontier svg { display: block; width: 100%; min-width: 700px; height: auto; overflow: visible; }
     .frontier-grid { stroke: #242424; stroke-width: 1; }
@@ -88,7 +88,7 @@
     .frontier-point.pareto { stroke: var(--text); stroke-width: 3; }
     .frontier-mark:hover .frontier-point, .frontier-mark:focus .frontier-point { stroke: var(--text); stroke-width: 3; transform: scale(1.25); }
     .frontier-index { fill: #050505; font-size: 9px; font-weight: 800; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
-    .frontier-point-label { fill: #c9d6e6; stroke: var(--panel); stroke-width: 4px; paint-order: stroke; font-size: 9px; opacity: 0; pointer-events: none; }
+    .frontier-point-label { fill: var(--text); stroke: var(--panel); stroke-width: 4px; paint-order: stroke; font-size: 9px; opacity: 0; pointer-events: none; }
     .frontier.labels-visible .frontier-point-label { opacity: 1; }
     .frontier-tooltip { position: fixed; z-index: 1000; width: min(290px, calc(100vw - 24px)); padding: 13px 14px; border: 1px solid var(--line-bright); color: var(--text); background: #0c0c0c; box-shadow: 0 12px 35px #000; pointer-events: none; }
     .tooltip-kicker { margin-bottom: 5px; color: var(--accent); font-size: 9px; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; }
@@ -193,11 +193,11 @@
   <script src="results/viewer-data.js"></script>
   <script>
     const tokenSeries = [
-      ["Input", "input_tokens", "#f5f5f3"],
-      ["Cached", "cache_read_tokens", "#ff8a5c"],
-      ["Cache write", "cache_write_tokens", "#8e789e"],
-      ["Output", "output_tokens", "#59d6a7"],
-      ["Reasoning", "reasoning_tokens", "#d77aa8"]
+      ["Cached", "cache_read_tokens", "#6F6A64"],
+      ["Input", "input_tokens", "#7C9CBF"],
+      ["Cache write", "cache_write_tokens", "#8B7CFF"],
+      ["Reasoning", "reasoning_tokens", "#F43F8E"],
+      ["Output", "output_tokens", "#FF5A26"]
     ];
     let allRows = [];
     let frontierMetric = "cost";
@@ -265,7 +265,7 @@
     function renderFrontier(groups) {
       $("frontier-tooltip").hidden = true;
       const metric = frontierMetrics[frontierMetric];
-      const palette = ["#ff8a5c", "#59d6a7", "#d77aa8", "#a58ac3", "#efbf63", "#f5f5f3"];
+      const palette = ["#FF6B35", "#FF9F1C", "#8B7CFF", "#2DD4BF", "#F43F8E", "#FFD166"];
       const stats = groups.map(([name, values], index) => {
         const measurements = values.map(metric.value).filter(value => value != null);
         const costs = values.map(cost).filter(value => value != null);
