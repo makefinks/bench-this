@@ -31,6 +31,14 @@ def read_results(path: Path) -> List[RunResult]:
     return rows
 
 
+def write_viewer_data(path: Path, rows: Iterable[RunResult]) -> None:
+    """Expose results as local JavaScript because browsers cannot fetch sibling files over file://."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps([asdict(row) for row in rows], sort_keys=True)
+    path.write_text(f"globalThis.BENCHMARK_RESULTS = {payload};\n", encoding="utf-8")
+
+
 def _money(value: float) -> str:
     """Use enough precision for inexpensive single-task model runs."""
 

@@ -33,7 +33,7 @@ from .models import (
     ValidationReceipt,
 )
 from .pricing import ModelsDevPricing
-from .report import append_result, write_summary
+from .report import append_result, read_results, write_summary, write_viewer_data
 from .workspace import (
     export_commit,
     prepare_evaluator_workspace,
@@ -794,6 +794,10 @@ class BenchmarkRunner:
             self.project.benchmark_dir / "results" / "summary.md",
             experiment_id,
             experiment_results,
+        )
+        write_viewer_data(
+            self.project.benchmark_dir / "results" / "viewer-data.js",
+            read_results(results_path),
         )
 
     def validate_tasks(

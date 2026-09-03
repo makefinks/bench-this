@@ -67,3 +67,13 @@ not require changes to `src/agent_bench/`.
 
 Generated repositories execute their own `benchmarks/_vendor/agent_bench/` copy and do
 not use this repository's `src/` directory.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked as local markdown under `.scratch/`. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Domain documentation uses a single-context layout. See `docs/agents/domain.md`.

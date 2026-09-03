@@ -5,7 +5,7 @@ import pytest
 from agent_bench.errors import InfrastructureError
 from agent_bench.evaluator import RESULT_PREFIX, parse_evaluator_report, validate_evaluator_exit
 from agent_bench.models import RunResult
-from agent_bench.report import read_results, write_summary
+from agent_bench.report import read_results, write_summary, write_viewer_data
 
 
 def report(groups, candidate_error=False):
@@ -237,6 +237,18 @@ def test_summary_omits_cache_hit_rate_without_cached_input(tmp_path) -> None:
 
     [task_row] = _data_rows(summary, 18)
     assert task_row[7:14] == ["120", "100", "0", "0", "20", "—", "—"]
+
+
+def test_viewer_data_is_locally_loadable_javascript(tmp_path) -> None:
+    path = tmp_path / "viewer-data.js"
+    row = RunResult("one", "model", 1, True, 1.0)
+
+    write_viewer_data(path, [row])
+
+    prefix = "globalThis.BENCHMARK_RESULTS = "
+    content = path.read_text(encoding="utf-8")
+    assert content.startswith(prefix)
+    assert json.loads(content.removeprefix(prefix).removesuffix(";\n"))[0]["task"] == "one"
 
 
 def test_historical_results_default_turn_fields_to_unknown(tmp_path) -> None:

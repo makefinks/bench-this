@@ -45,3 +45,16 @@ def test_scaffold_has_empty_generator_owned_configuration_root(tmp_path: Path) -
     configurations = benchmark / "configurations"
     assert configurations.is_dir()
     assert [path.name for path in configurations.iterdir()] == [".gitkeep"]
+
+
+def test_scaffold_includes_dependency_free_results_viewer(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+
+    viewer = scaffold(project) / "viewer.html"
+    content = viewer.read_text(encoding="utf-8")
+
+    assert "runs.jsonl" in content
+    assert '<script src="results/viewer-data.js"></script>' in content
+    assert "https://" not in content
+    assert "<link rel=" not in content
