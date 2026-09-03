@@ -1,21 +1,14 @@
 # Bench-this: Benchmark coding agents on your codebase
 
-Keeping up with coding agents is a part-time job nobody asked for. Every week brings a new model,
-new reasoning efforts, a new harness, and another skill to configure. By the time you have a clean
-comparison, your setup is already outdated.
+![bench-this results viewer](docs/viewer.png)
 
-`bench-this` makes the comparison easy. It turns real changes from a repository's history into
-behavior-focused tasks. Compare complete setups, including the model, reasoning settings, harness,
-skills, MCP servers, and workspace instructions, against the same task, so you know which setup
-works for your codebase.
+Turn real changes from your repository's history into behavior-focused tasks. Compare full setups —
+model, reasoning settings, harness, skills, MCP servers, workspace instructions — on the same tasks
+to see what works on your codebase.
 
-Each run records whether the task was completed, along with token usage, duration, and costs when
-available.
+Each run records completion, token usage, duration, and cost when available.
 
-> For an implementation-level explanation, see the
-> [technical guide](docs/implementation-guide.html). It covers the skill helpers,
-> task-authoring guards, runner modules, validation model, Docker boundaries, and measured lifecycle
-> in detail.
+> Implementation details: [technical guide](docs/implementation-guide.html).
 
 ## Installation
 

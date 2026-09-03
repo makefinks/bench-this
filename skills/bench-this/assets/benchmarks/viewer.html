@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Experiment browser</title>
+  <title>bench-this</title>
   <style>
     :root {
       color-scheme: dark;
@@ -34,7 +34,6 @@
     .section-id { color: var(--accent); font-size: 10px; font-weight: 750; letter-spacing: .16em; text-transform: uppercase; }
     th { color: #b5b5b5; font-size: 10px; font-weight: 750; letter-spacing: .16em; text-transform: uppercase; }
     .controls { display: flex; align-items: center; gap: 8px; }
-    .source-inline { color: var(--muted); font-size: 11px; white-space: nowrap; }
     button, select {
       min-height: 40px;
       border: 1px solid var(--line-bright);
@@ -129,7 +128,6 @@
     }
     @media (max-width: 480px) {
       .controls { align-items: stretch; flex-direction: column; }
-      .source-inline { text-align: left; }
       .metrics { grid-template-columns: 1fr; }
       .card { border-right: 0; border-bottom: 1px solid var(--line); }
       .card:last-child { border-bottom: 0; }
@@ -145,9 +143,8 @@
 <body>
   <main>
     <header>
-      <h1>Experiment browser</h1>
+      <h1>bench-this</h1>
       <div class="controls">
-        <span class="source-inline" id="source">No runs yet</span>
         <select id="experiment" aria-label="Experiment"></select>
         <button id="choose" type="button">Open results</button>
         <input id="file" type="file" accept=".jsonl,.json,application/json">
@@ -238,9 +235,8 @@
       return [...new Set(rows.map(row => row.experiment_id || "historical"))];
     }
 
-    function setRows(rows, source) {
+    function setRows(rows) {
       allRows = rows;
-      $("source").textContent = source;
       const ids = experiments(rows);
       $("experiment").replaceChildren(...(ids.length ? ids.map(id => new Option(id === "historical" ? "Historical runs" : id, id)) : [new Option("No results yet", "")]))
       $("experiment").value = ids.at(-1) ?? "";
@@ -306,7 +302,7 @@
         const pointX = x(stat.value), pointY = y(stat.quality);
         const label = stat.name.length > 28 ? `${stat.name.slice(0, 27)}…` : stat.name;
         const detail = `${stat.name} · ${metric.format(stat.value)} · ${Math.round(stat.quality * 100)}% quality`;
-        return `<g class="frontier-mark" tabindex="0" aria-label="${escape(detail)}"><circle class="frontier-point ${pareto.has(stat.name) ? "pareto" : ""}" cx="${pointX}" cy="${pointY}" r="12" fill="${stat.color}"></circle><text class="frontier-index" x="${pointX}" y="${pointY}">${index + 1}</text><text class="frontier-point-label" x="${pointX}" y="${pointY + 26}" text-anchor="middle">${escape(label)}</text></g>`;
+        return `<g class="frontier-mark" tabindex="0" aria-label="${escape(detail)}"><circle class="frontier-point ${pareto.has(stat.name) ? "pareto" : ""}" cx="${pointX}" cy="${pointY}" r="8" fill="${stat.color}"></circle><text class="frontier-index" x="${pointX}" y="${pointY}">${index + 1}</text><text class="frontier-point-label" x="${pointX}" y="${pointY + 26}" text-anchor="middle">${escape(label)}</text></g>`;
       }).join("");
       const legend = stats.map((stat, index) => `<div class="frontier-key"><i style="--point:${stat.color}"></i><span title="${escape(stat.name)}">${index + 1}. ${escape(stat.name)}</span><b>${metric.format(stat.value)} · ${Math.round(stat.quality * 100)}%${pareto.has(stat.name) ? " · frontier" : ""}</b></div>`).join("");
       $("frontier").innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Quality frontier by ${frontierMetric}">${grid}${line}${points}<text class="frontier-axis" x="${(left + right) / 2}" y="${height - 8}" text-anchor="middle">${metric.label}</text><text class="frontier-axis" transform="translate(14 ${(plotTop + bottom) / 2}) rotate(-90)" text-anchor="middle">REQUIREMENT COMPLETION</text></svg><div class="frontier-legend">${legend}</div>`;
@@ -415,7 +411,7 @@
     }
 
     async function load(file) {
-      try { setRows(parse(await file.text()), file.name); }
+      try { setRows(parse(await file.text())); }
       catch (error) { alert(error.message); }
     }
 
@@ -435,7 +431,7 @@
     console.assert(parse('{"task":"demo","configuration":"test","passed":true}').length === 1);
     console.assert([...paretoNames([{name:"cheap", value:1, quality:.8}, {name:"expensive", value:2, quality:.8}])].join() === "cheap");
     const saved = globalThis.BENCHMARK_RESULTS;
-    setRows(Array.isArray(saved) ? saved : [], saved?.length ? "results/runs.jsonl" : "No runs yet");
+    setRows(Array.isArray(saved) ? saved : []);
   </script>
 </body>
 </html>

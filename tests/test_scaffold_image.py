@@ -54,7 +54,6 @@ def test_scaffold_includes_dependency_free_results_viewer(tmp_path: Path) -> Non
     viewer = scaffold(project) / "viewer.html"
     content = viewer.read_text(encoding="utf-8")
 
-    assert "runs.jsonl" in content
     assert '<script src="results/viewer-data.js"></script>' in content
     assert "https://" not in content
     assert "<link rel=" not in content
