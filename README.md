@@ -104,8 +104,10 @@ You need Git history, a running Docker daemon, and the skill installed. Measured
 need a subscription (or other forms of authentication) for the chosen harness and provider.
 
 1. **Find candidates.** From the repo you want to benchmark, ask:
-   `Use the bench-this skill to find 3 benchmark task candidates.` Defaults to showing you 5 candidates when you omit the count.
-2. **Approve tasks.** Pick which candidates from the git history become tasks. The agent scaffolds `benchmarks/`,
+   `Use the bench-this skill to find 3 benchmark task candidates.` Defaults to showing you 5
+   candidates when you omit the count.
+2. **Approve tasks.** Pick which candidates from the git history become tasks. The agent scaffolds
+   `benchmarks/`,
    authors prompts plus public and hidden tests, and proves each task fails on the base commit
    and passes on the reference commit.
 3. **Choose what to compare.** Tell the agent which harnesses, models, skills, or MCP servers to
