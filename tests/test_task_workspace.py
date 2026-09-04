@@ -164,6 +164,25 @@ def test_check_can_be_repeated_and_repaired_before_accept(repository):
     assert json.loads(run("accept", info["scratch"]).stdout)["accepted"] is True
 
 
+def test_check_rejects_generated_python_cache_files(repository):
+    repo, _, _ = repository
+    info = prepare(repository)
+    valid_bundle(info)
+    cache = Path(info["output"]) / "hidden-tests/__pycache__/evaluate.pyc"
+    cache.parent.mkdir()
+    cache.write_bytes(b"generated")
+
+    rejected = run("check", info["scratch"], check=False)
+
+    assert rejected.returncode == 2
+    assert "generated Python cache files" in rejected.stderr
+    assert not (repo / "benchmarks/tasks/demo").exists()
+
+    cache.unlink()
+    cache.parent.rmdir()
+    assert json.loads(run("check", info["scratch"]).stdout)["checked"] is True
+
+
 def test_accept_requires_declared_group_scoring(repository):
     info = prepare(repository, "missing-groups")
     output = Path(info["output"])

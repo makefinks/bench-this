@@ -8,6 +8,10 @@ import shutil
 from pathlib import Path
 
 
+def _asset_root() -> Path:
+    return Path(__file__).resolve().parent.parent / "assets" / "benchmarks"
+
+
 def _image_name(project_root: Path) -> str:
     """Create a stable local image tag that cannot collide with another checkout."""
 
@@ -29,7 +33,7 @@ def scaffold(project_root: Path) -> Path:
     """Create benchmarks/ without depending on an installed agent-bench package."""
 
     project_root = project_root.expanduser().resolve()
-    source = Path(__file__).resolve().parent.parent / "assets" / "benchmarks"
+    source = _asset_root()
     destination = project_root / "benchmarks"
     if not source.is_dir():
         raise RuntimeError(f"bundled benchmark template is missing: {source}")
@@ -49,13 +53,44 @@ def scaffold(project_root: Path) -> Path:
     return destination
 
 
+def remove_scaffold_example(project_root: Path) -> bool:
+    """Remove the example only while its complete tree still matches the bundled scaffold."""
+
+    project_root = project_root.expanduser().resolve()
+    expected = _asset_root() / "tasks" / "example"
+    actual = project_root / "benchmarks" / "tasks" / "example"
+    if not actual.exists():
+        return False
+    expected_files = {
+        path.relative_to(expected): path.read_bytes()
+        for path in expected.rglob("*")
+        if path.is_file()
+    }
+    actual_files = {
+        path.relative_to(actual): path.read_bytes()
+        for path in actual.rglob("*")
+        if path.is_file()
+    }
+    if actual_files != expected_files:
+        raise RuntimeError(
+            f"refusing to remove modified or partial scaffold example: {actual}"
+        )
+    shutil.rmtree(actual)
+    return True
+
+
 def main() -> int:
     """Parse the target repository and report the created benchmark path."""
 
     parser = argparse.ArgumentParser()
     parser.add_argument("project", nargs="?", default=".", type=Path)
+    parser.add_argument("--remove-example", action="store_true")
     arguments = parser.parse_args()
-    print(f"Created {scaffold(arguments.project)}")
+    if arguments.remove_example:
+        action = "Removed" if remove_scaffold_example(arguments.project) else "No example at"
+        print(f"{action} {arguments.project.expanduser().resolve() / 'benchmarks/tasks/example'}")
+    else:
+        print(f"Created {scaffold(arguments.project)}")
     return 0
 
 

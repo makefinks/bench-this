@@ -258,6 +258,23 @@ def _reject_symlinks(root: Path) -> None:
             raise WorkspaceError(f"task bundle contains symlink: {path.relative_to(root)}")
 
 
+def _reject_generated_cache_files(root: Path) -> None:
+    """Keep interpreter caches out of the immutable task bundle accepted into the target."""
+
+    generated = [
+        path.relative_to(root)
+        for path in root.rglob("*")
+        if "__pycache__" in path.relative_to(root).parts
+        or (path.is_file() and path.suffix in {".pyc", ".pyo"})
+    ]
+    if generated:
+        rendered = ", ".join(str(path) for path in generated[:5])
+        raise WorkspaceError(
+            f"task bundle contains generated Python cache files: {rendered}; "
+            "remove them before the final check"
+        )
+
+
 def _reject_forbidden_evaluator_techniques(evaluator_directory: Path) -> None:
     """Reject high-confidence implementation checks and synthetic module environments."""
 
@@ -343,6 +360,7 @@ def _check(data: dict) -> dict:
         )
     output = Path(data["output"])
     _reject_symlinks(output)
+    _reject_generated_cache_files(output)
     for name in ("task.yaml", "prompt.md", "public", "public-tests", "hidden-tests"):
         path = output / name
         if not path.exists() or (

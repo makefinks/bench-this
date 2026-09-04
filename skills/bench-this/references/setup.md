@@ -88,6 +88,10 @@ and prints task and phase progress while suppressing interleaved raw output. Com
 remain available for diagnosis. Use `validate-task <task-id> --verbose` for focused diagnosis and
 task-local retries.
 
+Set the shell-tool timeout to exactly `14400000` milliseconds (four hours) for every
+`validate-tasks` or `validate-task` command. The runner's phase-level timeouts remain authoritative;
+task count, concurrency, expected duration, and observed progress do not shorten this outer timeout.
+
 When setup fails, fix benchmark-owned `Dockerfile`, `setup.sh`, task files, or evaluators. Rebuild
 after Dockerfile changes. Changes to the shared image or setup invalidate the common validation
 environment, so rerun `validate-tasks` for every task. After task-local prompt, manifest, public, or

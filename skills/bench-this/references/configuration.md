@@ -39,6 +39,11 @@ page for that combination:
 | Reasoning-effort treatment       | [Reasoning effort](configuration/treatments/reasoning-effort.md)                       |
 | Treatment execution or reporting | [Execution and reporting](configuration/execution.md)                                  |
 
+When the user names a common external skill or MCP server, use
+[common integrations](common-integrations.md) to resolve its canonical source before following the
+applicable treatment reference. The common-integrations link is a discovery pointer; configuration
+approval and reproducibility rules still apply.
+
 ## Minimal decision
 
 Use configuration values the user already supplied: harness, provider where applicable, selected
@@ -72,9 +77,13 @@ configuration IDs; follow their treatment references after the baseline is defin
 
 ## Resolve authentication after configuration
 
-Wait until the approved configurations exist so their exact harness, provider, and profile
-requirements are known. Deduplicate native profiles by profile and harness, and shared API-key
-profiles by profile and provider. Native profiles live at
+Wait until every approved configuration exists, then run `./benchmarks/run.py build` once so the
+image contains exactly their configured harness executables. Complete this build before
+authentication verification, `doctor`, or treatment execution.
+
+After the build, derive the exact harness, provider, and profile requirements. Deduplicate native
+profiles by profile and harness, and shared API-key profiles by profile and provider. Native
+profiles live at
 `~/.agent-bench/auth/<profile>/<harness>/`; shared API-key profiles live at
 `~/.agent-bench/auth/<profile>/providers/<provider>/`. Reuse an exact profile when it exists. Do not
 copy or translate credentials from the user's ordinary `~/.copilot`, OpenCode, GitHub CLI, browser,
@@ -106,3 +115,7 @@ Every catalog selection requires a pinned model.
 Once the required profiles are ready, do not execute a treatment unless the user explicitly asks.
 When execution is authorized, follow [execution and reporting](configuration/execution.md) for
 validation, requested scope, parallel-job selection, timeouts, and reporting.
+
+After executing treatments, offer a comparative results analysis. Read
+[results analysis](results-analysis.md) only when the user accepts that offer or asks to analyze
+completed results.
