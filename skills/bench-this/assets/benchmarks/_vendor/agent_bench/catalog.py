@@ -155,6 +155,12 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
                     AMAZON_BEDROCK_PROVIDER: _bedrock_provider(
                         "COPILOT_PROVIDER_API_KEY"
                     ),
+                    "openrouter": _provider(
+                        "openrouter",
+                        AuthPolicy.SHARED_API_KEY,
+                        "openrouter",
+                        api_key_environment="COPILOT_PROVIDER_API_KEY",
+                    ),
                 }
             ),
             allowed_fields=COMMON_REQUIRED_FIELDS

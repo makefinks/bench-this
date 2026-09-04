@@ -22,6 +22,7 @@ page for that combination:
 | OpenCode    | github-copilot               | [OpenCode](configuration/harnesses/opencode/index.md) and [GitHub Copilot](configuration/harnesses/opencode/providers/github-copilot.md)          |
 | Copilot CLI | none                         | [Copilot CLI](configuration/harnesses/copilot-cli/index.md)                                                                                       |
 | Copilot CLI | amazon-bedrock               | [Copilot CLI](configuration/harnesses/copilot-cli/index.md) and [Amazon Bedrock](configuration/harnesses/copilot-cli/providers/amazon-bedrock.md) |
+| Copilot CLI | openrouter                   | [Copilot CLI](configuration/harnesses/copilot-cli/index.md) and [OpenRouter](configuration/harnesses/copilot-cli/providers/openrouter.md)         |
 | Oh My Pi    | github-copilot, openai-codex | [Oh My Pi](configuration/harnesses/omp/index.md)                                                                                                  |
 | Oh My Pi    | amazon-bedrock               | [Oh My Pi](configuration/harnesses/omp/index.md) and [Amazon Bedrock](configuration/harnesses/omp/providers/amazon-bedrock.md)                    |
 | Oh My Pi    | openrouter                   | [Oh My Pi](configuration/harnesses/omp/index.md) and [OpenRouter](configuration/harnesses/omp/providers/openrouter.md)                            |

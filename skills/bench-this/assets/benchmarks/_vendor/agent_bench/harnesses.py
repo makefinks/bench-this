@@ -114,6 +114,14 @@ class CopilotAdapter(HarnessAdapter):
                     "COPILOT_OFFLINE": "true",
                 }
             )
+        elif self.config.provider == "openrouter":
+            environment.update(
+                {
+                    "COPILOT_PROVIDER_BASE_URL": "https://openrouter.ai/api/v1",
+                    "COPILOT_PROVIDER_TYPE": "openai",
+                    "COPILOT_OFFLINE": "true",
+                }
+            )
         return environment
 
     def telemetry_path(self, home: Path) -> Optional[Path]:

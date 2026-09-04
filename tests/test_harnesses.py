@@ -54,6 +54,28 @@ def test_copilot_bedrock_uses_mantle_responses_without_exposing_secret(tmp_path)
     assert "COPILOT_PROVIDER_API_KEY" not in environment
 
 
+def test_copilot_openrouter_uses_official_endpoint_without_exposing_secret(tmp_path):
+    value = TreatmentConfig(
+        **{
+            **config(tmp_path).__dict__,
+            "provider": "openrouter",
+            "model": "anthropic/claude-sonnet-4.6",
+        }
+    )
+    adapter = CopilotAdapter(value)
+
+    command = adapter.command("fix it")
+    assert command[command.index("--model") + 1] == "anthropic/claude-sonnet-4.6"
+
+    environment = adapter.environment()
+
+    assert environment["COPILOT_PROVIDER_BASE_URL"] == "https://openrouter.ai/api/v1"
+    assert environment["COPILOT_PROVIDER_TYPE"] == "openai"
+    assert environment["COPILOT_OFFLINE"] == "true"
+    assert "COPILOT_PROVIDER_WIRE_API" not in environment
+    assert "COPILOT_PROVIDER_API_KEY" not in environment
+
+
 def test_opencode_identity_requires_provider_and_model(tmp_path):
     adapter = OpenCodeAdapter(config(tmp_path, "opencode"))
     adapter.verify_identity('{"providerID":"github-copilot","modelID":"gpt-fixed"}')

@@ -179,6 +179,33 @@ def test_opencode_openrouter_auth_injects_shared_key_without_staging(tmp_path):
     assert list(prepared.home.rglob(PROVIDER_CREDENTIALS_FILE.name)) == []
 
 
+def test_copilot_openrouter_auth_injects_shared_key_without_staging(tmp_path):
+    auth_root = tmp_path / "auth"
+    profile = set_provider_api_key(
+        "openrouter", "openrouter", "fixture-token", auth_root
+    )
+    config = TreatmentConfig(
+        **{
+            **bedrock_config(tmp_path).__dict__,
+            "id": "copilot-openrouter",
+            "harness": "copilot",
+            "provider": "openrouter",
+            "model": "anthropic/claude-sonnet-4.6",
+            "region": None,
+            "agent": None,
+            "auth_profile": "openrouter",
+        }
+    )
+
+    prepared = prepare_home(config, tmp_path / "copilot-home", auth_root)
+
+    assert prepared.profile == profile
+    assert dict(prepared.secret_environment) == {
+        "COPILOT_PROVIDER_API_KEY": "fixture-token"
+    }
+    assert list(prepared.home.rglob(PROVIDER_CREDENTIALS_FILE.name)) == []
+
+
 @pytest.mark.parametrize("harness", ["omp", "pi"])
 def test_pi_family_openrouter_auth_injects_shared_key_without_staging(tmp_path, harness):
     auth_root = tmp_path / "auth"

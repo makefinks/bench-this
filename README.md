@@ -22,7 +22,7 @@ npx skills add makefinks/bench-this
 
 | Harness            | GitHub Copilot (`github-copilot`) | OpenAI Codex (`openai-codex`) | OpenCode Zen (`opencode`) | OpenCode Go (`opencode-go`) | Amazon Bedrock (`amazon-bedrock`) | OpenRouter (`openrouter`) |
 | ------------------ | --------------------------------- | ----------------------------- | ------------------------- | --------------------------- | --------------------------------- | ------------------------- |
-| Native Copilot CLI | ✓                                 |                               |                           |                             | ✓                                 |                           |
+| Native Copilot CLI | ✓                                 |                               |                           |                             | ✓                                 | ✓                         |
 | OpenCode           | ✓                                 | ✓                             | ✓                         | ✓                           | ✓                                 | ✓                         |
 | Oh My Pi           | ✓                                 | ✓                             |                           |                             | ✓                                 | ✓                         |
 | Pi                 | ✓                                 | ✓                             |                           |                             | ✓                                 | ✓                         |

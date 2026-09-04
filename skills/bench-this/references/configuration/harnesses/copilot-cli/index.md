@@ -21,6 +21,10 @@ For Amazon Bedrock BYOK, also read the
 [Copilot Amazon Bedrock reference](providers/amazon-bedrock.md). This path requires provider
 `amazon-bedrock`, a pinned model, and a region.
 
+For OpenRouter BYOK, also read the
+[Copilot OpenRouter reference](providers/openrouter.md). This path requires provider `openrouter`
+and a pinned model.
+
 Local skills work with both paths. The command refuses to overwrite an existing configuration.
 
 ## GitHub Copilot authentication

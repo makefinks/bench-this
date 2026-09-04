@@ -185,6 +185,32 @@ def test_openrouter_pricing_uses_catalog_identity_and_raw_model_id(tmp_path):
     ) == 1
 
 
+def test_copilot_openrouter_pricing_uses_catalog_identity_and_plain_model_id(tmp_path):
+    class Pricing:
+        def price(self, provider, model):
+            assert (provider, model) == (
+                "openrouter",
+                "anthropic/claude-sonnet-4.6",
+            )
+            return ModelPrice(1, 2)
+
+    treatment = TreatmentConfig(
+        root=tmp_path,
+        id="copilot-openrouter",
+        harness="copilot",
+        provider="openrouter",
+        model="anthropic/claude-sonnet-4.6",
+        harness_config=tmp_path / "harness",
+        workspace_config=tmp_path / "workspace",
+        auth_profile="openrouter",
+        arguments=[],
+    )
+
+    assert BenchmarkRunner(project(tmp_path), pricing=Pricing())._estimate(
+        treatment, Usage(input_tokens=1_000_000)
+    ) == 1
+
+
 @pytest.mark.parametrize("harness", ["omp", "pi"])
 def test_pi_family_openrouter_pricing_uses_catalog_identity(tmp_path, harness):
     class Pricing:

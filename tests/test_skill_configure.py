@@ -370,6 +370,33 @@ def test_creates_copilot_bedrock_configuration(tmp_path: Path) -> None:
     assert list((root / "harness").iterdir()) == []
 
 
+def test_creates_copilot_openrouter_configuration(tmp_path: Path) -> None:
+    repository = scaffold(tmp_path)
+
+    result = run_configure(
+        repository,
+        "--harness",
+        "copilot",
+        "--provider",
+        "openrouter",
+        "--model",
+        "anthropic/claude-sonnet-4.6",
+        "--auth-profile",
+        "openrouter",
+    )
+
+    assert result.returncode == 0, result.stderr
+    root = (
+        repository
+        / "benchmarks/configurations/copilot-openrouter-anthropic-claude-sonnet-4-6"
+    )
+    runtime = load_configuration(root / "configuration.yaml")
+    assert runtime.provider == "openrouter"
+    assert runtime.model == "anthropic/claude-sonnet-4.6"
+    assert runtime.qualified_model == "anthropic/claude-sonnet-4.6"
+    assert list((root / "harness").iterdir()) == []
+
+
 def test_creates_omp_bedrock_configuration(tmp_path: Path) -> None:
     repository = scaffold(tmp_path)
     result = run_configure(
@@ -485,7 +512,7 @@ def test_rejects_provider_for_native_copilot(tmp_path: Path) -> None:
     )
 
     assert result.returncode != 0
-    assert "copilot provider must be one of: amazon-bedrock" in result.stderr
+    assert "copilot provider must be one of: amazon-bedrock, openrouter" in result.stderr
 
 
 def test_refuses_to_overwrite_configuration(tmp_path: Path) -> None:

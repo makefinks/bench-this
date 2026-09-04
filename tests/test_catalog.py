@@ -22,6 +22,7 @@ def test_catalog_declares_complete_supported_matrix():
     assert selections == {
         ("copilot", None),
         ("copilot", "amazon-bedrock"),
+        ("copilot", "openrouter"),
         ("opencode", "amazon-bedrock"),
         ("opencode", "github-copilot"),
         ("opencode", "openai"),
@@ -54,6 +55,17 @@ def test_opencode_openrouter_catalog_uses_shared_key_and_pricing_identity():
     assert harness.model_reference is ModelReferenceForm.QUALIFIED
     assert provider.auth_policy is AuthPolicy.SHARED_API_KEY
     assert provider.api_key_environment == "OPENROUTER_API_KEY"
+    assert provider.pricing_provider == "openrouter"
+    assert not provider.allow_automatic_model
+    assert provider.allowed_fields == provider.required_fields == frozenset()
+
+
+def test_copilot_openrouter_catalog_uses_shared_key_and_pricing_identity():
+    harness, provider = resolve_selection("copilot", "openrouter")
+
+    assert harness.model_reference is ModelReferenceForm.PLAIN
+    assert provider.auth_policy is AuthPolicy.SHARED_API_KEY
+    assert provider.api_key_environment == "COPILOT_PROVIDER_API_KEY"
     assert provider.pricing_provider == "openrouter"
     assert not provider.allow_automatic_model
     assert provider.allowed_fields == provider.required_fields == frozenset()
@@ -155,9 +167,13 @@ def test_catalog_resolves_provider_contracts_for_all_consumers():
     harness, provider = resolve_selection("copilot", "amazon-bedrock")
     assert (harness.id, provider.id) == ("copilot", "amazon-bedrock")
 
-    with pytest.raises(ValueError, match="copilot provider must be one of: amazon-bedrock"):
+    with pytest.raises(
+        ValueError, match="copilot provider must be one of: amazon-bedrock, openrouter"
+    ):
         resolve_selection("copilot", "github-copilot")
-    with pytest.raises(ValueError, match="copilot provider must be one of: amazon-bedrock"):
+    with pytest.raises(
+        ValueError, match="copilot provider must be one of: amazon-bedrock, openrouter"
+    ):
         resolve_selection("copilot", None, provider_supplied=True)
     with pytest.raises(ValueError, match="Pi requires provider"):
         resolve_selection("pi")

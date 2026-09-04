@@ -66,6 +66,21 @@ def test_pi_family_openrouter_documentation_covers_shared_key_setup(harness) -> 
     assert "default routing" in reference.lower()
 
 
+def test_copilot_openrouter_documentation_covers_shared_key_setup() -> None:
+    reference = (
+        SKILL_ROOT
+        / "references/configuration/harnesses/copilot-cli/providers/openrouter.md"
+    ).read_text(encoding="utf-8")
+
+    assert "--harness copilot" in reference
+    assert "--provider openrouter" in reference
+    assert "auth set-key --provider openrouter" in reference
+    assert "--api-key 'YOUR_API_KEY'" in reference
+    assert "COPILOT_PROVIDER_API_KEY" in reference
+    assert "https://openrouter.ai/api/v1" in reference
+    assert "default routing" in reference.lower()
+
+
 def test_local_markdown_links_resolve() -> None:
     missing = []
     paths = [ROOT / "README.md", ROOT / "AGENTS.md", *SKILL_ROOT.rglob("*.md")]

@@ -321,9 +321,9 @@ and profile labels are separate.
 
 The generator defaults to OpenCode and reads the exact catalog bundled with this skill. Use
 `--harness copilot` for native Copilot CLI, `--harness omp` for Oh My Pi, and `--harness pi` for Pi.
-Copilot CLI omits the provider for GitHub-hosted models or uses `amazon-bedrock` for its supported
-BYOK path. OpenCode, Oh My Pi, and Pi require one of their harness-scoped catalog providers.
-Every selection requires a pinned model.
+Copilot CLI omits the provider for GitHub-hosted models or uses `amazon-bedrock` or `openrouter`
+for its supported BYOK paths. OpenCode, Oh My Pi, and Pi require one of their harness-scoped catalog
+providers. Every selection requires a pinned model.
 
 Configuring treatments or validating tasks does not authorize their execution. Run treatments only
 when the user explicitly asks you to do so, and execute exactly the requested task, configuration,

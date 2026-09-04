@@ -88,6 +88,25 @@ arguments: []
 
 The runner supplies its Mantle BYOK environment without a native configuration file.
 
+A Copilot OpenRouter treatment uses `provider: openrouter` with any non-empty pinned model ID,
+including provider/model IDs containing `/`:
+
+```yaml
+id: copilot-openrouter-claude-sonnet
+harness: copilot
+provider: openrouter
+model: anthropic/claude-sonnet-4.6
+harness_config: harness
+workspace_config: workspace
+auth_profile: openrouter
+arguments: []
+```
+
+The runner passes the plain model ID with the official OpenRouter endpoint, provider type `openai`,
+and offline mode. The shared provider profile holds an OpenRouter API key injected as
+`COPILOT_PROVIDER_API_KEY`. OpenRouter default routing may select different upstream deployments or
+fallbacks.
+
 ## OpenCode configuration
 
 ```yaml
