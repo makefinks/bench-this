@@ -719,8 +719,10 @@
           : null;
       const totalTokens = (row) =>
         TOKEN_SERIES.reduce((sum, [, key]) => sum + (row[key] || 0), 0);
+      // Prefer the normalized estimate: harness-reported native cost mixes
+      // live billing, local estimates, and absent values across harnesses.
       const runCost = (row) =>
-        row.native_cost_usd ?? row.estimated_cost_usd ?? null;
+        row.estimated_cost_usd ?? row.native_cost_usd ?? null;
       const FRONTIER_METRICS = {
         cost: {
           value: runCost,
