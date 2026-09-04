@@ -24,8 +24,8 @@ npx skills add makefinks/bench-this
 | ------------------ | --------------------------------- | ----------------------------- | ------------------------- | --------------------------- | --------------------------------- | ------------------------- |
 | Native Copilot CLI | ✓                                 |                               |                           |                             | ✓                                 |                           |
 | OpenCode           | ✓                                 | ✓                             | ✓                         | ✓                           | ✓                                 | ✓                         |
-| Oh My Pi           | ✓                                 | ✓                             |                           |                             | ✓                                 |                           |
-| Pi                 | ✓                                 | ✓                             |                           |                             | ✓                                 |                           |
+| Oh My Pi           | ✓                                 | ✓                             |                           |                             | ✓                                 | ✓                         |
+| Pi                 | ✓                                 | ✓                             |                           |                             | ✓                                 | ✓                         |
 
 See [configuration.md](skills/bench-this/references/configuration.md) for setup commands and
 reproducibility rules. Contributions that add another harness or provider are greatly appreciated.

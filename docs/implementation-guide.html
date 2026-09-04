@@ -658,8 +658,8 @@ raise SystemExit(0 if all(groups.values()) and not candidate_error else 1)</pre>
           harness settings, workspace overlay, and extra command arguments. The static catalog
           supports native Copilot CLI with either its providerless GitHub account or Amazon Bedrock
           Mantle BYOK; OpenCode with Amazon Bedrock, OpenRouter, GitHub Copilot, OpenAI, OpenCode
-          Zen, and OpenCode Go; Oh My Pi with Amazon Bedrock, GitHub Copilot, and OpenAI Codex; and
-          Pi with Amazon Bedrock, GitHub Copilot, and OpenAI Codex. Every selection requires a pinned
+          Zen, and OpenCode Go; Oh My Pi with Amazon Bedrock, OpenRouter, GitHub Copilot, and OpenAI Codex; and
+          Pi with Amazon Bedrock, OpenRouter, GitHub Copilot, and OpenAI Codex. Every selection requires a pinned
           model.</p>
 
         <div class="table-scroll">
@@ -782,7 +782,7 @@ raise SystemExit(0 if all(groups.values()) and not candidate_error else 1)</pre>
           returns it under the catalog-declared environment name during both preflight and solver
           execution: <code>COPILOT_PROVIDER_API_KEY</code> or
           <code>AWS_BEARER_TOKEN_BEDROCK</code> for Bedrock, and
-          <code>OPENROUTER_API_KEY</code> for OpenRouter through OpenCode. The credential file never
+          <code>OPENROUTER_API_KEY</code> for OpenRouter through OpenCode, Oh My Pi, and Pi. The credential file never
           enters the disposable harness home or Docker process arguments.</p>
         <p>Profile validation rejects symbolic links and malformed structured state. OpenCode and
           Pi must contain exactly one selected credential. Oh My Pi parses its SQLite credential
@@ -798,7 +798,7 @@ raise SystemExit(0 if all(groups.values()) and not candidate_error else 1)</pre>
             <tbody>
               <tr><th>Command mode</th><td>Prompt mode, JSON output, no user questions, autonomous local tools.</td><td><code>opencode run</code>, JSON events, provider-qualified model, configured agent and workspace.</td><td>Single-shot Pi JSON protocol with OMP approval and workspace flags.</td><td>Single-shot upstream Pi JSON protocol with trusted approval.</td></tr>
               <tr><th>Restrictions</th><td>GitHub tool denied, remote export and auto-update disabled.</td><td>Enabled provider constrained by treatment <code>opencode.json</code>; sharing disabled.</td><td>No session or title persistence; isolated OMP state.</td><td>No session persistence; updates and telemetry disabled.</td></tr>
-              <tr><th>Environment</th><td>Disposable <code>HOME</code> and <code>COPILOT_HOME</code>; regional Mantle Chat Completions endpoint and separate BYOK token when Bedrock is selected.</td><td>Disposable XDG roots; Bedrock or OpenRouter key injected separately.</td><td>Disposable <code>.omp</code> agent directory; Bedrock region and token when selected.</td><td>Disposable <code>.pi</code> agent directory; Bedrock region and token when selected.</td></tr>
+              <tr><th>Environment</th><td>Disposable <code>HOME</code> and <code>COPILOT_HOME</code>; regional Mantle Chat Completions endpoint and separate BYOK token when Bedrock is selected.</td><td>Disposable XDG roots; Bedrock or OpenRouter key injected separately.</td><td>Disposable <code>.omp</code> agent directory; Bedrock or OpenRouter key injected separately.</td><td>Disposable <code>.pi</code> agent directory; Bedrock or OpenRouter key injected separately.</td></tr>
               <tr><th>Identity evidence</th><td>Resolved model in structured output.</td><td>Every INFO-stream provider/model identity matches.</td><td colspan="2">Shared Pi-family transcript parsing verifies every provider/model identity and rejects embedded provider errors.</td></tr>
             </tbody>
           </table>

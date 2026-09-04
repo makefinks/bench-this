@@ -4,7 +4,7 @@ Oh My Pi (`omp`) runs as a non-interactive JSON harness. Select the complete pro
 keep provider credentials in the runner-owned authentication profile. Read a provider-specific
 reference too when the routing table identifies one.
 
-Supported providers are `github-copilot`, `openai-codex`, and `amazon-bedrock`.
+Supported providers are `github-copilot`, `openai-codex`, `amazon-bedrock`, and `openrouter`.
 Every provider requires a pinned model.
 
 ```bash

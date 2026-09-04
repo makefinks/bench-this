@@ -4,7 +4,7 @@ Pi (`pi`) runs as a non-interactive JSON harness. Pin the complete provider/mode
 provider credentials in the runner-owned authentication profile. Read a provider-specific reference
 too when the routing table identifies one.
 
-Supported providers are `github-copilot`, `openai-codex`, and `amazon-bedrock`.
+Supported providers are `github-copilot`, `openai-codex`, `amazon-bedrock`, and `openrouter`.
 
 ```bash
 python <skill-directory>/scripts/configure.py <repository> \

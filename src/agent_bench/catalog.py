@@ -231,6 +231,12 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
                     "openai-codex": _provider(
                         "openai-codex", AuthPolicy.OMP_OAUTH, "openai"
                     ),
+                    "openrouter": _provider(
+                        "openrouter",
+                        AuthPolicy.SHARED_API_KEY,
+                        "openrouter",
+                        api_key_environment="OPENROUTER_API_KEY",
+                    ),
                 }
             ),
             allowed_fields=COMMON_REQUIRED_FIELDS
@@ -264,6 +270,12 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
                     ),
                     "openai-codex": _provider(
                         "openai-codex", AuthPolicy.PI_OAUTH, "openai"
+                    ),
+                    "openrouter": _provider(
+                        "openrouter",
+                        AuthPolicy.SHARED_API_KEY,
+                        "openrouter",
+                        api_key_environment="OPENROUTER_API_KEY",
                     ),
                 }
             ),

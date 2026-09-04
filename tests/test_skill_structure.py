@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
+import pytest
 import yaml
 
 
@@ -48,6 +49,21 @@ def test_opencode_openrouter_documentation_covers_shared_key_setup() -> None:
     assert "auth set-key --provider openrouter" in reference
     assert "--api-key 'YOUR_API_KEY'" in reference
     assert "OPENROUTER_API_KEY" in reference
+
+
+@pytest.mark.parametrize("harness", ["omp", "pi"])
+def test_pi_family_openrouter_documentation_covers_shared_key_setup(harness) -> None:
+    reference = (
+        SKILL_ROOT
+        / f"references/configuration/harnesses/{harness}/providers/openrouter.md"
+    ).read_text(encoding="utf-8")
+
+    assert f"--harness {harness}" in reference
+    assert "--provider openrouter" in reference
+    assert "auth set-key --provider openrouter" in reference
+    assert "--api-key 'YOUR_API_KEY'" in reference
+    assert "OPENROUTER_API_KEY" in reference
+    assert "default routing" in reference.lower()
 
 
 def test_local_markdown_links_resolve() -> None:

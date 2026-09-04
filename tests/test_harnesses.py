@@ -84,6 +84,34 @@ def test_opencode_openrouter_command_and_identity_use_pinned_provider_model(tmp_
         )
 
 
+@pytest.mark.parametrize("harness,adapter_class", [("omp", OmpAdapter), ("pi", PiAdapter)])
+def test_pi_family_openrouter_command_and_identity_use_pinned_provider_model(
+    tmp_path, harness, adapter_class
+):
+    value = TreatmentConfig(
+        **{
+            **config(tmp_path, harness).__dict__,
+            "provider": "openrouter",
+            "model": "anthropic/claude-sonnet-4.6",
+        }
+    )
+    adapter = adapter_class(value)
+
+    command = adapter.command("fix it")
+    assert command[command.index("--model") + 1] == (
+        "openrouter/anthropic/claude-sonnet-4.6"
+    )
+    adapter.verify_identity(
+        '{"type":"message_end","message":{"role":"assistant",'
+        '"provider":"openrouter","model":"anthropic/claude-sonnet-4.6"}}'
+    )
+    with pytest.raises(IdentityMismatch):
+        adapter.verify_identity(
+            '{"type":"message_end","message":{"role":"assistant",'
+            '"provider":"openrouter","model":"anthropic/claude-sonnet-4"}}'
+        )
+
+
 def test_opencode_preflight_enables_identity_logs(tmp_path):
     command = OpenCodeAdapter(config(tmp_path, "opencode")).preflight_command()
     assert "--print-logs" in command

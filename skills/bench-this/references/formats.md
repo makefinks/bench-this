@@ -208,7 +208,24 @@ arguments: []
 ```
 
 Every OMP treatment requires a pinned model. Amazon Bedrock configurations use
-`provider: amazon-bedrock` and add the required `region`.
+`provider: amazon-bedrock` and add the required `region`. OpenRouter configurations use
+`provider: openrouter` with any non-empty pinned model ID, including provider/model IDs
+containing `/`:
+
+```yaml
+id: omp-openrouter-claude-sonnet
+harness: omp
+provider: openrouter
+model: anthropic/claude-sonnet-4.6
+harness_config: harness
+workspace_config: workspace
+auth_profile: openrouter
+arguments: []
+```
+
+The OpenRouter profile is provider-scoped. Its key is injected as `OPENROUTER_API_KEY` and never
+written to the treatment or disposable OMP home. OpenRouter default routing may select
+different upstream deployments or fallbacks.
 
 ## Pi configuration
 
@@ -225,6 +242,23 @@ arguments: []
 
 Pi Amazon Bedrock configurations use `provider: amazon-bedrock` and add the required `region`.
 The shared provider profile holds a Bedrock API key injected as `AWS_BEARER_TOKEN_BEDROCK`.
+Pi OpenRouter configurations use `provider: openrouter` with any non-empty pinned model ID,
+including provider/model IDs containing `/`:
+
+```yaml
+id: pi-openrouter-claude-sonnet
+harness: pi
+provider: openrouter
+model: anthropic/claude-sonnet-4.6
+harness_config: harness
+workspace_config: workspace
+auth_profile: openrouter
+arguments: []
+```
+
+The OpenRouter profile is provider-scoped. Its key is injected as `OPENROUTER_API_KEY` and never
+written to the treatment or disposable Pi home. OpenRouter default routing may select
+different upstream deployments or fallbacks.
 
 ## Commands
 

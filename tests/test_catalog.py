@@ -31,9 +31,11 @@ def test_catalog_declares_complete_supported_matrix():
         ("omp", "amazon-bedrock"),
         ("omp", "github-copilot"),
         ("omp", "openai-codex"),
+        ("omp", "openrouter"),
         ("pi", "amazon-bedrock"),
         ("pi", "github-copilot"),
         ("pi", "openai-codex"),
+        ("pi", "openrouter"),
     }
 
 
@@ -48,6 +50,18 @@ def test_pi_github_copilot_reuses_oauth_and_requires_a_pinned_model():
 
 def test_opencode_openrouter_catalog_uses_shared_key_and_pricing_identity():
     harness, provider = resolve_selection("opencode", "openrouter")
+
+    assert harness.model_reference is ModelReferenceForm.QUALIFIED
+    assert provider.auth_policy is AuthPolicy.SHARED_API_KEY
+    assert provider.api_key_environment == "OPENROUTER_API_KEY"
+    assert provider.pricing_provider == "openrouter"
+    assert not provider.allow_automatic_model
+    assert provider.allowed_fields == provider.required_fields == frozenset()
+
+
+@pytest.mark.parametrize("harness_id", ["omp", "pi"])
+def test_pi_family_openrouter_catalog_uses_shared_key_and_pricing_identity(harness_id):
+    harness, provider = resolve_selection(harness_id, "openrouter")
 
     assert harness.model_reference is ModelReferenceForm.QUALIFIED
     assert provider.auth_policy is AuthPolicy.SHARED_API_KEY

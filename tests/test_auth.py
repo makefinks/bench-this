@@ -179,6 +179,34 @@ def test_opencode_openrouter_auth_injects_shared_key_without_staging(tmp_path):
     assert list(prepared.home.rglob(PROVIDER_CREDENTIALS_FILE.name)) == []
 
 
+@pytest.mark.parametrize("harness", ["omp", "pi"])
+def test_pi_family_openrouter_auth_injects_shared_key_without_staging(tmp_path, harness):
+    auth_root = tmp_path / "auth"
+    profile = set_provider_api_key(
+        "openrouter", "openrouter", "fixture-token", auth_root
+    )
+    config = TreatmentConfig(
+        **{
+            **bedrock_config(tmp_path).__dict__,
+            "id": "openrouter",
+            "harness": harness,
+            "provider": "openrouter",
+            "model": "anthropic/claude-sonnet-4.6",
+            "region": None,
+            "agent": None,
+            "auth_profile": "openrouter",
+        }
+    )
+
+    prepared = prepare_home(config, tmp_path / f"{harness}-home", auth_root)
+
+    assert prepared.profile == profile
+    assert dict(prepared.secret_environment) == {
+        "OPENROUTER_API_KEY": "fixture-token"
+    }
+    assert list(prepared.home.rglob(PROVIDER_CREDENTIALS_FILE.name)) == []
+
+
 def test_bedrock_provider_profile_rejects_broadened_or_invalid_credentials(tmp_path):
     auth_root = tmp_path / "auth"
     profile = provider_auth_profile_root(

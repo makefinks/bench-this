@@ -339,6 +339,30 @@ auth_profile: openrouter
     assert config.qualified_model == "openrouter/anthropic/claude-sonnet-4.6"
 
 
+@pytest.mark.parametrize("harness", ["omp", "pi"])
+def test_schema_accepts_pi_family_openrouter_provider_model_id(tmp_path, harness):
+    root = tmp_path / f"{harness}-openrouter"
+    (root / "harness").mkdir(parents=True)
+    (root / "workspace").mkdir()
+    config_id = f"{harness}-openrouter"
+    path = write(
+        root / "configuration.yaml",
+        f"""id: {config_id}
+harness: {harness}
+provider: openrouter
+model: anthropic/claude-sonnet-4.6
+harness_config: harness
+workspace_config: workspace
+auth_profile: openrouter
+""",
+    )
+
+    config = load_configuration(path)
+
+    assert config.model == "anthropic/claude-sonnet-4.6"
+    assert config.qualified_model == "openrouter/anthropic/claude-sonnet-4.6"
+
+
 def test_schema_accepts_opencode_go_provider(tmp_path):
     root = tmp_path / "opencode-go"
     (root / "harness").mkdir(parents=True)
@@ -666,6 +690,18 @@ agent: build""",
 provider: openrouter
 model: auto
 agent: build""",
+        ),
+        (
+            "omp-openrouter-auto",
+            """harness: omp
+provider: openrouter
+model: auto""",
+        ),
+        (
+            "pi-openrouter-auto",
+            """harness: pi
+provider: openrouter
+model: auto""",
         ),
         (
             "pi-copilot-auto",

@@ -147,6 +147,32 @@ def test_creates_openrouter_configuration_with_provider_model_id(tmp_path: Path)
     assert "provider" not in native
 
 
+@pytest.mark.parametrize("harness", ["omp", "pi"])
+def test_creates_pi_family_openrouter_configuration(tmp_path: Path, harness: str) -> None:
+    repository = scaffold(tmp_path)
+
+    result = run_configure(
+        repository,
+        "--harness",
+        harness,
+        "--provider",
+        "openrouter",
+        "--model",
+        "anthropic/claude-sonnet-4.6",
+        "--auth-profile",
+        "openrouter",
+    )
+
+    assert result.returncode == 0, result.stderr
+    root = (
+        repository
+        / f"benchmarks/configurations/{harness}-openrouter-anthropic-claude-sonnet-4-6"
+    )
+    runtime = load_configuration(root / "configuration.yaml")
+    assert runtime.qualified_model == "openrouter/anthropic/claude-sonnet-4.6"
+    assert list((root / "harness").iterdir()) == []
+
+
 def test_creates_amazon_bedrock_configuration(tmp_path: Path) -> None:
     repository = scaffold(tmp_path)
 
