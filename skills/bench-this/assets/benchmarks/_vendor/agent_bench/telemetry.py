@@ -130,6 +130,15 @@ def _generic_turns(events: List[Any]) -> Optional[int]:
                 opencode_seen = True
             if event_type == "step_finish":
                 opencode_turns += 1
+            # OTel metric events (e.g. gen_ai.client.token.usage) carry nested
+            # dataPoint attributes with operation.name="chat" but are histogram
+            # annotations, not chats. Non-chat spans are not turns either.
+            if event_type == "metric":
+                continue
+            if event_type == "span":
+                event_name = event.get("name", "")
+                if isinstance(event_name, str) and event_name and not event_name.startswith("chat "):
+                    continue
         for mapping in _walk(event):
             attributes = mapping.get("attributes")
             if not isinstance(attributes, dict) or "gen_ai.operation.name" not in attributes:
