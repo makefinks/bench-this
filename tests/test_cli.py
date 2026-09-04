@@ -1,7 +1,199 @@
+import json
 from types import SimpleNamespace
 
+import pytest
+
 from agent_bench import cli
+from agent_bench.auth import PROVIDER_CREDENTIALS_FILE
 from agent_bench.models import RunResult
+
+
+def test_auth_set_key_works_without_project_and_atomically_replaces_key(
+    tmp_path, monkeypatch, capsys
+):
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(
+        cli,
+        "load_project",
+        lambda _path: pytest.fail("auth set-key must not load a benchmark project"),
+    )
+    arguments = [
+        "auth",
+        "set-key",
+        "--provider",
+        "amazon-bedrock",
+        "--profile",
+        "shared",
+        "--api-key",
+    ]
+
+    assert cli.main([*arguments, "first-secret"]) == 0
+    assert cli.main([*arguments, "replacement-secret"]) == 0
+
+    captured = capsys.readouterr()
+    assert "first-secret" not in captured.out + captured.err
+    assert "replacement-secret" not in captured.out + captured.err
+    profile = home / ".agent-bench/auth/shared/providers/amazon-bedrock"
+    credential = profile / PROVIDER_CREDENTIALS_FILE
+    assert json.loads(credential.read_text(encoding="utf-8")) == {
+        "api_key": "replacement-secret"
+    }
+    assert profile.parent.parent.stat().st_mode & 0o777 == 0o700
+    assert profile.parent.stat().st_mode & 0o777 == 0o700
+    assert profile.stat().st_mode & 0o777 == 0o700
+    assert credential.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize(
+    "api_key", ["", " ", "line-one\nline-two", "line-one\rline-two"]
+)
+def test_auth_set_key_rejects_invalid_key_without_changing_state(
+    tmp_path, monkeypatch, api_key
+):
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    arguments = [
+        "auth",
+        "set-key",
+        "--provider",
+        "amazon-bedrock",
+        "--profile",
+        "shared",
+        "--api-key",
+    ]
+
+    assert cli.main([*arguments, api_key]) == 2
+    assert not (home / ".agent-bench").exists()
+
+
+def test_auth_set_key_rejects_unsafe_profile_before_writing(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+
+    assert (
+        cli.main(
+            [
+                "auth",
+                "set-key",
+                "--provider",
+                "amazon-bedrock",
+                "--profile",
+                "../../escape",
+                "--api-key",
+                "fixture-secret",
+            ]
+        )
+        == 2
+    )
+
+    assert not (tmp_path / "escape").exists()
+    assert not (home / ".agent-bench").exists()
+
+
+def test_auth_set_key_rejects_unsupported_provider_before_writing(
+    tmp_path, monkeypatch
+):
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+
+    with pytest.raises(SystemExit):
+        cli.main(
+            [
+                "auth",
+                "set-key",
+                "--provider",
+                "openai",
+                "--profile",
+                "shared",
+                "--api-key",
+                "fixture-secret",
+            ]
+        )
+
+    assert not (home / ".agent-bench").exists()
+
+
+def test_auth_set_key_rejects_credential_directory_without_traceback(
+    tmp_path, monkeypatch
+):
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    credential = (
+        home
+        / ".agent-bench/auth/shared/providers/amazon-bedrock"
+        / PROVIDER_CREDENTIALS_FILE
+    )
+    credential.mkdir(parents=True)
+
+    assert (
+        cli.main(
+            [
+                "auth",
+                "set-key",
+                "--provider",
+                "amazon-bedrock",
+                "--profile",
+                "shared",
+                "--api-key",
+                "replacement-secret",
+            ]
+        )
+        == 2
+    )
+    assert credential.is_dir()
+
+
+def test_auth_set_key_preserves_malformed_provider_profile(
+    tmp_path, monkeypatch
+):
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    credential = (
+        home
+        / ".agent-bench/auth/shared/providers/amazon-bedrock"
+        / PROVIDER_CREDENTIALS_FILE
+    )
+    credential.parent.mkdir(parents=True)
+    credential.write_text("not-json\n", encoding="utf-8")
+
+    assert (
+        cli.main(
+            [
+                "auth",
+                "set-key",
+                "--provider",
+                "amazon-bedrock",
+                "--profile",
+                "shared",
+                "--api-key",
+                "replacement-secret",
+            ]
+        )
+        == 2
+    )
+
+    assert credential.read_text(encoding="utf-8") == "not-json\n"
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["--profile", "shared", "--api-key", "fixture-secret"],
+        ["--provider", "amazon-bedrock", "--api-key", "fixture-secret"],
+        ["--provider", "amazon-bedrock", "--profile", "shared"],
+    ],
+)
+def test_auth_set_key_requires_provider_profile_and_key(
+    tmp_path, monkeypatch, arguments
+):
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+
+    with pytest.raises(SystemExit):
+        cli.main(["auth", "set-key", *arguments])
+
+    assert not (home / ".agent-bench").exists()
 
 
 def test_validate_tasks_reports_every_receipt_before_failing(tmp_path, monkeypatch, capsys):

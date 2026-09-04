@@ -169,8 +169,8 @@ arguments: []
 ```
 
 The corresponding `harness/opencode.json` must pin the AWS region under
-`provider.amazon-bedrock.options.region`. The external profile supplies
-`AWS_BEARER_TOKEN_BEDROCK`; never put that token in YAML or `opencode.json`.
+`provider.amazon-bedrock.options.region`. One provider profile supplies the key as
+`AWS_BEARER_TOKEN_BEDROCK`; never put it in YAML or `opencode.json`.
 
 Every treatment manifest uses one strict flat schema. The loader rejects unknown fields, fields that
 do not apply to the selected catalog entry, missing providers, unsupported providers, and
@@ -206,7 +206,7 @@ arguments: []
 ```
 
 Pi Amazon Bedrock configurations use `provider: amazon-bedrock` and add the required `region`.
-The external profile holds a Bedrock API key injected as `AWS_BEARER_TOKEN_BEDROCK`.
+The shared provider profile holds a Bedrock API key injected as `AWS_BEARER_TOKEN_BEDROCK`.
 
 ## Commands
 
@@ -217,6 +217,8 @@ python <skill-directory>/scripts/scaffold.py .
 ./benchmarks/run.py build
 ./benchmarks/run.py validate-tasks --jobs 3
 ./benchmarks/run.py validate-task duplicate-email
+./benchmarks/run.py auth set-key --provider amazon-bedrock \
+  --profile bedrock --api-key 'YOUR_API_KEY'
 ./benchmarks/run.py auth login --harness copilot --profile copilot
 ./benchmarks/run.py auth login --harness opencode --provider github-copilot --profile copilot
 ./benchmarks/run.py auth login --harness opencode --provider openai --profile openai

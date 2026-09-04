@@ -45,6 +45,26 @@ def test_pi_github_copilot_reuses_oauth_and_requires_a_pinned_model():
     assert not provider.allow_automatic_model
 
 
+def test_bedrock_declares_shared_api_key_environment_per_harness():
+    environments = {
+        harness.id: provider.api_key_environment
+        for harness, provider in supported_selections()
+        if provider.id == "amazon-bedrock"
+    }
+
+    assert environments == {
+        "copilot": "COPILOT_PROVIDER_API_KEY",
+        "opencode": "AWS_BEARER_TOKEN_BEDROCK",
+        "omp": "AWS_BEARER_TOKEN_BEDROCK",
+        "pi": "AWS_BEARER_TOKEN_BEDROCK",
+    }
+    assert all(
+        provider.auth_policy is AuthPolicy.SHARED_API_KEY
+        for _, provider in supported_selections()
+        if provider.id == "amazon-bedrock"
+    )
+
+
 def test_every_harness_has_complete_generic_metadata():
     assert set(HARNESS_CATALOG) == {kind.value for kind in AdapterKind}
     for harness_id, harness in HARNESS_CATALOG.items():
@@ -69,6 +89,9 @@ def test_every_provider_has_closed_auth_and_valid_field_contract():
         assert provider.pricing_provider
         assert provider.required_fields <= provider.allowed_fields
         assert provider.id in harness.providers
+        assert (provider.api_key_environment is not None) == (
+            provider.auth_policy is AuthPolicy.SHARED_API_KEY
+        )
 
 
 def test_only_copilot_selections_allow_automatic_model():

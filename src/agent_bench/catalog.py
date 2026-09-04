@@ -31,7 +31,7 @@ class AuthPolicy(str, Enum):
     OPENCODE_PROVIDER = "opencode-provider"
     OMP_OAUTH = "omp-oauth"
     PI_OAUTH = "pi-oauth"
-    BEDROCK_BEARER = "bedrock-bearer"
+    SHARED_API_KEY = "shared-api-key"
 
 
 class WriterKind(str, Enum):
@@ -63,6 +63,7 @@ class ProviderSpec:
     allowed_fields: frozenset[str] = field(default_factory=frozenset)
     required_fields: frozenset[str] = field(default_factory=frozenset)
     allow_automatic_model: bool = False
+    api_key_environment: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,7 @@ def _provider(
     allowed_fields: frozenset[str] = frozenset(),
     required_fields: frozenset[str] = frozenset(),
     allow_automatic_model: bool = False,
+    api_key_environment: Optional[str] = None,
 ) -> ProviderSpec:
     return ProviderSpec(
         id=provider_id,
@@ -122,16 +124,20 @@ def _provider(
         allowed_fields=allowed_fields,
         required_fields=required_fields,
         allow_automatic_model=allow_automatic_model,
+        api_key_environment=api_key_environment,
     )
 
 
-BEDROCK_PROVIDER = _provider(
-    AMAZON_BEDROCK_PROVIDER,
-    AuthPolicy.BEDROCK_BEARER,
-    AMAZON_BEDROCK_PROVIDER,
-    allowed_fields=BEDROCK_FIELDS,
-    required_fields=BEDROCK_REQUIRED_FIELDS,
-)
+def _bedrock_provider(api_key_environment: str) -> ProviderSpec:
+    return _provider(
+        AMAZON_BEDROCK_PROVIDER,
+        AuthPolicy.SHARED_API_KEY,
+        AMAZON_BEDROCK_PROVIDER,
+        allowed_fields=BEDROCK_FIELDS,
+        required_fields=BEDROCK_REQUIRED_FIELDS,
+        api_key_environment=api_key_environment,
+    )
+
 
 HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
     {
@@ -146,7 +152,9 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
                         AuthPolicy.NATIVE_COPILOT,
                         "github-copilot",
                     ),
-                    AMAZON_BEDROCK_PROVIDER: BEDROCK_PROVIDER,
+                    AMAZON_BEDROCK_PROVIDER: _bedrock_provider(
+                        "COPILOT_PROVIDER_API_KEY"
+                    ),
                 }
             ),
             allowed_fields=COMMON_REQUIRED_FIELDS
@@ -167,7 +175,9 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
             model_reference=ModelReferenceForm.QUALIFIED,
             providers=MappingProxyType(
                 {
-                    "amazon-bedrock": BEDROCK_PROVIDER,
+                    "amazon-bedrock": _bedrock_provider(
+                        "AWS_BEARER_TOKEN_BEDROCK"
+                    ),
                     "github-copilot": _provider(
                         "github-copilot",
                         AuthPolicy.OPENCODE_PROVIDER,
@@ -204,7 +214,9 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
             model_reference=ModelReferenceForm.QUALIFIED,
             providers=MappingProxyType(
                 {
-                    "amazon-bedrock": BEDROCK_PROVIDER,
+                    "amazon-bedrock": _bedrock_provider(
+                        "AWS_BEARER_TOKEN_BEDROCK"
+                    ),
                     "github-copilot": _provider(
                         "github-copilot",
                         AuthPolicy.OMP_OAUTH,
@@ -238,7 +250,9 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
             model_reference=ModelReferenceForm.QUALIFIED,
             providers=MappingProxyType(
                 {
-                    "amazon-bedrock": BEDROCK_PROVIDER,
+                    "amazon-bedrock": _bedrock_provider(
+                        "AWS_BEARER_TOKEN_BEDROCK"
+                    ),
                     "github-copilot": _provider(
                         "github-copilot", AuthPolicy.PI_OAUTH, "github-copilot"
                     ),
@@ -285,6 +299,21 @@ def supported_selections() -> tuple[tuple[HarnessSpec, ProviderSpec], ...]:
         (harness, provider)
         for harness in HARNESS_CATALOG.values()
         for provider in harness.providers.values()
+    )
+
+
+def shared_api_key_providers() -> tuple[str, ...]:
+    """Return provider IDs that declare the shared API-key lifecycle."""
+
+    return tuple(
+        sorted(
+            {
+                str(provider.id)
+                for _, provider in supported_selections()
+                if provider.id is not None
+                and provider.auth_policy is AuthPolicy.SHARED_API_KEY
+            }
+        )
     )
 
 

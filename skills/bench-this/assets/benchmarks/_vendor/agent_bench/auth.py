@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-import getpass
 import json
 from pathlib import Path
 import re
@@ -24,6 +23,7 @@ from .catalog import (
     HarnessSpec,
     ProviderSpec,
     resolve_selection,
+    shared_api_key_providers,
 )
 from .docker import DockerEngine, Mount
 from .errors import BenchmarkError, ConfigurationError, InfrastructureError
@@ -32,15 +32,10 @@ from .workspace import _reject_symlinks, copy_contents
 
 
 PROFILE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
-BEDROCK_CREDENTIALS_FILE = Path("credentials.json")
-BEDROCK_TOKEN_ENVIRONMENT_VARIABLE = "AWS_BEARER_TOKEN_BEDROCK"
-COPILOT_BEDROCK_TOKEN_ENVIRONMENT_VARIABLE = "COPILOT_PROVIDER_API_KEY"
+PROVIDER_NAMESPACE = "providers"
+PROVIDER_CREDENTIALS_FILE = Path("credentials.json")
+API_KEY_FIELD = "api_key"
 OMP_NATIVE_DATABASE = Path(".omp/agent/agent.db")
-OMP_PROVIDER_ENVIRONMENT = {
-    "github-copilot": "COPILOT_GITHUB_TOKEN",
-    "openai-codex": "OPENAI_CODEX_OAUTH_TOKEN",
-    AMAZON_BEDROCK_PROVIDER: BEDROCK_TOKEN_ENVIRONMENT_VARIABLE,
-}
 PI_AUTH_FILE = Path(".pi/agent/auth.json")
 OPENCODE_AUTH_FILE = Path(".local/share/opencode/auth.json")
 
@@ -97,10 +92,19 @@ class AuthStrategy(ABC):
 def auth_profile_root(
     profile: str, harness: str, auth_root: Optional[Path] = None
 ) -> Path:
-    """Resolve one narrowly scoped external credential profile."""
+    """Resolve one narrowly scoped external harness credential profile."""
 
     base = auth_root or Path.home() / ".agent-bench" / "auth"
     return base.expanduser().resolve() / profile / harness
+
+
+def provider_auth_profile_root(
+    profile: str, provider: str, auth_root: Optional[Path] = None
+) -> Path:
+    """Resolve one provider-owned credential profile shared by every harness."""
+
+    base = auth_root or Path.home() / ".agent-bench" / "auth"
+    return base.expanduser().resolve() / profile / PROVIDER_NAMESPACE / provider
 
 
 def _auth_login_command(config: TreatmentConfig) -> str:
@@ -109,6 +113,22 @@ def _auth_login_command(config: TreatmentConfig) -> str:
         f"./benchmarks/run.py auth login --harness {config.harness}{provider} "
         f"--profile {config.auth_profile}"
     )
+
+
+def _auth_set_key_command(provider: str, profile: str) -> str:
+    return (
+        f"./benchmarks/run.py auth set-key --provider {provider} "
+        f"--profile {profile} --api-key <api-key>"
+    )
+
+
+def _auth_setup_command(config: TreatmentConfig) -> tuple[str, str]:
+    if config.auth_policy is AuthPolicy.SHARED_API_KEY:
+        return (
+            _auth_set_key_command(str(config.provider), config.auth_profile),
+            "auth-set-key",
+        )
+    return _auth_login_command(config), "auth-login"
 
 
 def _profile(config: TreatmentConfig, auth_root: Optional[Path]) -> Path:
@@ -242,31 +262,70 @@ def _atomic_json_profile(
     return profile
 
 
-def store_bedrock_credential(
+def _read_provider_api_key(profile: Path, provider: str) -> str:
+    credential_path = profile / PROVIDER_CREDENTIALS_FILE
+    try:
+        credentials = json.loads(credential_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ConfigurationError(
+            f"invalid {provider} API-key credential file: {credential_path}"
+        ) from exc
+    api_key = credentials.get(API_KEY_FIELD) if isinstance(credentials, dict) else None
+    if not isinstance(credentials, dict) or set(credentials) != {API_KEY_FIELD}:
+        raise ConfigurationError(
+            f"{provider} API-key profile must contain only {API_KEY_FIELD!r}"
+        )
+    try:
+        return _one_line_secret(api_key, f"{provider} API key")
+    except ConfigurationError as exc:
+        raise ConfigurationError(
+            f"{provider} API-key profile must contain one valid API key"
+        ) from exc
+
+
+def set_provider_api_key(
     profile_name: str,
-    harness_id: str,
-    token: str,
+    provider_id: str,
+    api_key: str,
     auth_root: Optional[Path] = None,
 ) -> Path:
-    """Atomically store one harness-scoped Bedrock bearer credential."""
+    """Atomically store one catalog-declared provider API key."""
 
-    token = _one_line_secret(token, "Amazon Bedrock API key")
-    try:
-        provider = HARNESS_CATALOG[harness_id].provider(AMAZON_BEDROCK_PROVIDER)
-    except KeyError as exc:
+    if not PROFILE_PATTERN.fullmatch(profile_name):
         raise ConfigurationError(
-            f"unsupported Bedrock bearer-token harness: {harness_id}"
-        ) from exc
-    if provider.auth_policy is not AuthPolicy.BEDROCK_BEARER:
-        raise ConfigurationError(
-            f"unsupported Bedrock bearer-token harness: {harness_id}"
+            "profile must use lowercase letters, digits, and hyphens"
         )
-    profile = auth_profile_root(profile_name, harness_id, auth_root)
-    environment_name = OMP_PROVIDER_ENVIRONMENT[AMAZON_BEDROCK_PROVIDER]
+    api_key = _one_line_secret(api_key, "API key")
+    if provider_id not in shared_api_key_providers():
+        supported = ", ".join(shared_api_key_providers())
+        raise ConfigurationError(
+            f"provider must use shared API-key authentication; supported providers: {supported}"
+        )
+    profile = provider_auth_profile_root(profile_name, provider_id, auth_root)
+    profile_root = profile.parents[1]
+    if profile_root.exists():
+        _reject_symlinks(profile_root, "authentication profile")
+    if profile.exists():
+        _reject_symlinks(profile, "provider_auth_profile")
+        if not profile.is_dir():
+            raise ConfigurationError(
+                f"provider authentication profile must be a directory: {profile}"
+            )
+        credential_path = profile / PROVIDER_CREDENTIALS_FILE
+        entries = set(profile.iterdir())
+        if entries not in (set(), {credential_path}):
+            raise ConfigurationError(
+                f"refusing to replace broadened authentication profile: {profile}"
+            )
+        if entries:
+            _read_provider_api_key(profile, provider_id)
+    for directory in (profile_root, profile.parent):
+        directory.mkdir(parents=True, exist_ok=True)
+        directory.chmod(0o700)
     return _atomic_json_profile(
         profile,
-        BEDROCK_CREDENTIALS_FILE,
-        {environment_name: token},
+        PROVIDER_CREDENTIALS_FILE,
+        {API_KEY_FIELD: api_key},
     )
 
 
@@ -534,47 +593,45 @@ class PiOAuthAuth(AuthStrategy):
         _stage_file(validated, destination, PI_AUTH_FILE)
 
 
-class BedrockBearerAuth(AuthStrategy):
-    """Runner-owned Bedrock bearer-token lifecycle for every supported harness."""
+class SharedApiKeyAuth(AuthStrategy):
+    """Provider-owned API-key lifecycle shared across supported harnesses."""
 
     def login(self, project, harness, provider, profile_name, docker):
-        token = getpass.getpass("Amazon Bedrock API key: ")
-        return store_bedrock_credential(profile_name, harness.id, token)
+        raise ConfigurationError(
+            f"{provider.id} uses provider-scoped API keys; run "
+            f"`{_auth_set_key_command(str(provider.id), profile_name)}`"
+        )
 
     def validate(self, config, auth_root=None):
-        profile = _profile(config, auth_root)
-        if _files(profile) != [BEDROCK_CREDENTIALS_FILE]:
-            raise ConfigurationError(
-                f"Amazon Bedrock auth profile contains unexpected files: {profile}; "
-                f"run `{_auth_login_command(config)}`"
+        provider = str(config.provider)
+        profile = provider_auth_profile_root(config.auth_profile, provider, auth_root)
+        if not profile.is_dir():
+            legacy = auth_profile_root(config.auth_profile, config.harness, auth_root)
+            guidance = _auth_set_key_command(provider, config.auth_profile)
+            if legacy.is_dir():
+                raise ConfigurationError(
+                    f"harness-scoped {provider} authentication profiles are no longer "
+                    f"supported: {legacy}; run `{guidance}`"
+                )
+            raise InfrastructureError(
+                f"authentication profile not found: {profile}; run `{guidance}`"
             )
-        credential_path = profile / BEDROCK_CREDENTIALS_FILE
-        try:
-            credentials = json.loads(credential_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        _reject_symlinks(profile, "provider_auth_profile")
+        if _files(profile) != [PROVIDER_CREDENTIALS_FILE]:
             raise ConfigurationError(
-                f"invalid Amazon Bedrock credential file: {credential_path}"
-            ) from exc
-        environment_name = OMP_PROVIDER_ENVIRONMENT[AMAZON_BEDROCK_PROVIDER]
-        token = credentials.get(environment_name) if isinstance(credentials, dict) else None
-        if not isinstance(credentials, dict) or set(credentials) != {environment_name}:
-            raise ConfigurationError(
-                "Amazon Bedrock auth profile must contain one valid bearer token"
+                f"{provider} API-key profile contains unexpected files: {profile}; "
+                f"run `{_auth_set_key_command(provider, config.auth_profile)}`"
             )
-        try:
-            token = _one_line_secret(token, "Amazon Bedrock auth profile bearer token")
-        except ConfigurationError as exc:
+        environment_name = config.provider_spec.api_key_environment
+        if environment_name is None:
             raise ConfigurationError(
-                "Amazon Bedrock auth profile must contain one valid bearer token"
-            ) from exc
-        target_name = (
-            COPILOT_BEDROCK_TOKEN_ENVIRONMENT_VARIABLE
-            if config.harness == "copilot"
-            else environment_name
-        )
+                f"shared API-key provider {provider!r} has no environment mapping"
+            )
         return ValidatedAuth(
             profile,
-            MappingProxyType({target_name: token}),
+            MappingProxyType(
+                {environment_name: _read_provider_api_key(profile, provider)}
+            ),
         )
 
     def stage(self, config, validated, destination):
@@ -587,7 +644,7 @@ AUTH_STRATEGIES: Mapping[AuthPolicy, AuthStrategy] = MappingProxyType(
         AuthPolicy.OPENCODE_PROVIDER: OpenCodeProviderAuth(),
         AuthPolicy.OMP_OAUTH: OmpOAuthAuth(),
         AuthPolicy.PI_OAUTH: PiOAuthAuth(),
-        AuthPolicy.BEDROCK_BEARER: BedrockBearerAuth(),
+        AuthPolicy.SHARED_API_KEY: SharedApiKeyAuth(),
     }
 )
 
@@ -613,12 +670,12 @@ def validate_auth_profile(
 
 
 def _authentication_required(config: TreatmentConfig, cause: BenchmarkError) -> BenchmarkError:
-    command = _auth_login_command(config)
+    command, action = _auth_setup_command(config)
     error_type = ConfigurationError if isinstance(cause, ConfigurationError) else InfrastructureError
     return error_type(
         f"authentication required for harness={config.harness}, provider={config.provider}, "
         f"profile={config.auth_profile}: {cause}; run `{command}`\n"
-        "ACTION_REQUIRED: auth-login"
+        f"ACTION_REQUIRED: {action}"
     )
 
 
@@ -676,25 +733,26 @@ def probe_bedrock_wire_api(
         r"^[a-z]{2}(?:-[a-z0-9]+)+-[0-9]+$", region
     ):
         raise ConfigurationError(f"invalid Bedrock region: {region!r}")
-    profile = auth_profile_root(profile_name, harness_id, auth_root)
+    profile = provider_auth_profile_root(
+        profile_name, AMAZON_BEDROCK_PROVIDER, auth_root
+    )
     if not profile.is_dir():
-        raise InfrastructureError(f"authentication profile not found: {profile}")
-    _reject_symlinks(profile, "auth_profile")
-    credential_path = profile / BEDROCK_CREDENTIALS_FILE
-    try:
-        credentials = json.loads(credential_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ConfigurationError(
-            f"invalid Amazon Bedrock credential file: {credential_path}"
-        ) from exc
-    token = credentials.get(BEDROCK_TOKEN_ENVIRONMENT_VARIABLE)
-    if not isinstance(credentials, dict) or set(credentials) != {
-        BEDROCK_TOKEN_ENVIRONMENT_VARIABLE
-    }:
-        raise ConfigurationError(
-            "Amazon Bedrock auth profile must contain one valid bearer token"
+        legacy = auth_profile_root(profile_name, harness_id, auth_root)
+        guidance = _auth_set_key_command(AMAZON_BEDROCK_PROVIDER, profile_name)
+        if legacy.is_dir():
+            raise ConfigurationError(
+                f"harness-scoped {AMAZON_BEDROCK_PROVIDER} authentication profiles "
+                f"are no longer supported: {legacy}; run `{guidance}`"
+            )
+        raise InfrastructureError(
+            f"authentication profile not found: {profile}; run `{guidance}`"
         )
-    token = _one_line_secret(token, "Amazon Bedrock auth profile bearer token")
+    _reject_symlinks(profile, "provider_auth_profile")
+    if _files(profile) != [PROVIDER_CREDENTIALS_FILE]:
+        raise ConfigurationError(
+            f"Amazon Bedrock API-key profile contains unexpected files: {profile}"
+        )
+    token = _read_provider_api_key(profile, AMAZON_BEDROCK_PROVIDER)
 
     def _probe(url: str, payload: dict) -> tuple[bool, int | None, str | None]:
         """Return support flag; raise only on transport/auth failures."""

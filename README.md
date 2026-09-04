@@ -112,9 +112,9 @@ need a subscription (or other forms of authentication) for the chosen harness an
    and passes on the reference commit.
 3. **Choose what to compare.** Tell the agent which harnesses, models, skills, or MCP servers to
    compare. It configures one treatment per setup.
-4. **Authenticate once.** Run the single `auth login` command the agent gives you, then ask it to
-   run. It checks Docker, the image, and profiles, and evaluates each task/treatment pair in an
-   isolated container.
+4. **Authenticate once.** Run the `auth login` or provider `auth set-key` command the agent gives
+   you, then ask it to run. It checks Docker, the image, and profiles, and evaluates each
+   task/treatment pair in an isolated container.
 5. **Compare results.** Results land under `benchmarks/results/` with pass rate, tokens, cost,
    runtime, and failure reasons per configuration and task. Open `benchmarks/viewer.html` for the
    interactive comparison.

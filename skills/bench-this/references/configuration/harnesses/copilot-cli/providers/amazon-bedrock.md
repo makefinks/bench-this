@@ -48,30 +48,22 @@ If you ran `auth probe` first, pass its `wire_api` via `--bedrock-wire-api`.
 
 ## Authentication
 
-Use a Bedrock API key. Copilot BYOK does not use GitHub login for this treatment, and the runner
-does
-not inherit the host AWS credential chain.
-
-For agent-assisted setup, first obtain authorization to create or replace the profile and ask the
-user to supply the API key. Then run:
+Use one Bedrock provider profile shared by every harness. Copilot BYOK does not use GitHub login for
+this treatment, and the runner does not inherit the host AWS credential chain. When the profile is
+missing, offer to run the command after the user supplies the key, or show the same command for the
+user to run. Replace the example value with the literal key:
 
 ```bash
-python <skill-directory>/scripts/provision_auth.py <repository> \
-  --harness copilot --provider amazon-bedrock --profile bedrock
+./benchmarks/run.py auth set-key --provider amazon-bedrock \
+  --profile bedrock --api-key 'YOUR_API_KEY'
 ```
 
-Supply the token only through the helper process's `AGENT_BENCH_BEDROCK_API_KEY` environment entry.
-The helper stores the shared Bedrock credential shape; the runner injects it into Copilot as
-`COPILOT_PROVIDER_API_KEY` without staging a secret file.
+If the user chooses agent setup, ask for the key only after that choice and execute the command
+without repeating the key. Literal arguments may remain in command history, process listings, and
+tool logs. `auth login` is not supported for Bedrock.
 
-For manual setup, give the user this command to run in their own terminal:
-
-```bash
-./benchmarks/run.py auth login --harness copilot \
-  --provider amazon-bedrock --profile bedrock
-```
-
-After setup, verify only the matching profile and harness:
+The runner injects the key as `COPILOT_PROVIDER_API_KEY` without staging its credential file. After
+setup, verify the matching profile and harness:
 
 ```bash
 ./benchmarks/run.py auth verify --harness copilot --profile bedrock

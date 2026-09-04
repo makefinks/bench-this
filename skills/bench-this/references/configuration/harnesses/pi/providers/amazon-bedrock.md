@@ -32,22 +32,21 @@ python <skill-directory>/scripts/configure.py <repository> \
 
 ## Authentication
 
-The non-interactive helper accepts a Bedrock API key through its process environment:
+Amazon Bedrock uses one provider profile shared by every harness. When it is missing, offer to run
+the command after the user supplies the key, or show the same command for the user to run. Replace
+the example value with the literal key:
 
 ```bash
-python <skill-directory>/scripts/provision_auth.py <repository> \
-  --harness pi --provider amazon-bedrock --profile bedrock
+./benchmarks/run.py auth set-key --provider amazon-bedrock \
+  --profile bedrock --api-key 'YOUR_API_KEY'
 ```
 
-Supply `AGENT_BENCH_BEDROCK_API_KEY` through the execution API. Never put it in the shell command,
-command arguments, logs, or repository files. The helper fails immediately when the environment
-entry is absent.
+If the user chooses agent setup, ask for the key only after that choice and execute the command
+without repeating the key. Literal arguments may remain in command history, process listings, and
+tool logs. `auth login` is not supported for Bedrock.
 
-The runner injects the key as `AWS_BEARER_TOKEN_BEDROCK` and sets `AWS_REGION` inside Pi's
-disposable
-container.
-
-After provisioning, verify only the matching Pi profile:
+The runner injects the key as `AWS_BEARER_TOKEN_BEDROCK`, sets `AWS_REGION`, and does not stage its
+credential file in Pi's disposable home. After setup, verify only the matching Pi profile:
 
 ```bash
 ./benchmarks/run.py auth verify --harness pi --profile bedrock

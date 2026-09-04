@@ -762,9 +762,11 @@ raise SystemExit(0 if all(groups.values()) and not candidate_error else 1)</pre>
 
       <section class="section" id="auth">
         <div class="section-head"><span class="section-index">06</span><div><h2>Authentication and agent commands</h2><p class="section-deck">Credentials stay outside the repository. A catalog-selected strategy validates each profile once, stages an approved temporary home, and returns separately injected secrets before source is exposed.</p></div></div>
-        <p>Profiles live at <code>~/.agent-bench/auth/&lt;profile&gt;/&lt;harness&gt;/</code>. The
-          closed authentication registry owns native Copilot device login, OpenCode provider login,
-          Oh My Pi OAuth databases, Pi provider-scoped OAuth JSON, and Bedrock bearer tokens.
+        <p>Native profiles live at <code>~/.agent-bench/auth/&lt;profile&gt;/&lt;harness&gt;/</code>;
+          shared API keys live at
+          <code>~/.agent-bench/auth/&lt;profile&gt;/providers/&lt;provider&gt;/</code>. The closed
+          authentication registry owns native Copilot device login, OpenCode provider login,
+          Oh My Pi OAuth databases, Pi provider-scoped OAuth JSON, and shared provider API keys.
           Interactive Copilot, OpenCode, Oh My Pi, and Pi login runs from a real user terminal in
           the pinned benchmark image. Users choose the CLI's headless or device-code option because
           browser and localhost callbacks cannot return to the isolated container. Each attempt uses
@@ -774,13 +776,12 @@ raise SystemExit(0 if all(groups.values()) and not candidate_error else 1)</pre>
           isolated <code>.copilot</code> bundle, OpenCode's provider-filtered
           <code>.local/share/opencode/auth.json</code>, Oh My Pi's selected OAuth database, or Pi's
           provider-filtered <code>.pi/agent/auth.json</code>.</p>
-        <p>Amazon Bedrock uses one runner-owned bearer-token profile per harness. Manual login uses
-          a hidden prompt; agent-assisted setup uses the non-interactive
-          <code>provision_auth.py</code> helper. Both paths store the same narrow external profile.
-          Home preparation parses the token once and returns it as
+        <p>Amazon Bedrock uses one provider-owned API-key profile shared by every harness.
+          <code>auth set-key</code> accepts the provider, profile, and literal key without loading a
+          benchmark project or image. Home preparation parses the key once and returns it as
           <code>COPILOT_PROVIDER_API_KEY</code> for Copilot CLI or
           <code>AWS_BEARER_TOKEN_BEDROCK</code> for the other harnesses during both preflight and
-          solver execution. The token file never enters the disposable harness home or Docker
+          solver execution. The credential file never enters the disposable harness home or Docker
           process arguments.</p>
         <p>Profile validation rejects symbolic links and malformed structured state. OpenCode and
           Pi must contain exactly one selected credential. Oh My Pi parses its SQLite credential

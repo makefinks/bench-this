@@ -69,23 +69,24 @@ configuration IDs; follow their treatment references after the baseline is defin
 ## Resolve authentication after configuration
 
 Wait until the approved configurations exist so their exact harness, provider, and profile
-requirements are known. Deduplicate configurations that use the same benchmark profile, then check
-for `~/.agent-bench/auth/<profile>/<harness>/`. Reuse that profile when it exists. Do not copy or
-translate credentials from the user's ordinary `~/.copilot`, OpenCode, GitHub CLI, browser, or
-keychain state. Do not copy a complete home directory. The benchmark profile is deliberately
-separate so the runner can stage only the selected credentials into a disposable home.
+requirements are known. Deduplicate native profiles by profile and harness, and shared API-key
+profiles by profile and provider. Native profiles live at
+`~/.agent-bench/auth/<profile>/<harness>/`; shared API-key profiles live at
+`~/.agent-bench/auth/<profile>/providers/<provider>/`. Reuse an exact profile when it exists. Do not
+copy or translate credentials from the user's ordinary `~/.copilot`, OpenCode, GitHub CLI, browser,
+or keychain state. Do not copy a complete home directory.
 
-For each missing profile, identify the configurations that need it and follow the selected harness
-and provider references to provide the exact setup command. Tell the user to run interactive CLI
-login in a real terminal and choose its headless or device-code option. Callback-based browser login
-cannot return to the isolated container; opening a host-browser URL shown by a device-code flow is
-expected. You should not drive the CLI's TTY or handle passwords, device codes, or provider
-responses. Configuration approval alone does not authorize starting authentication.
+For each missing shared API-key profile, identify every configuration that needs it and offer the
+agent-executed and user-executed `auth set-key` paths documented by the provider reference. For each
+missing native profile, provide the exact `auth login` command and tell the user to run it in a real
+terminal with the headless or device-code option. Callback-based browser login cannot return to the
+isolated container; opening a host-browser URL shown by a device-code flow is expected. You should
+not drive the CLI's TTY or handle passwords, device codes, or provider responses. Configuration
+approval alone does not authorize starting authentication.
 
 Read the selected harness reference for its normal authentication and verification commands. Also
 read the harness/provider reference when one exists: provider integrations can replace the normal
-flow. A provider API key stays user-entered unless the harness/provider reference defines an
-explicit non-interactive, benchmark-safe route.
+flow.
 
 After a newly completed login, verify only the matching profile and harness. If the profile already
 existed and the user only asked for configuration, report that it will be verified before execution

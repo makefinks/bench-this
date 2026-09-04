@@ -46,33 +46,21 @@ treatment input and must never appear under `benchmarks/`.
 
 ## Authentication
 
-Amazon Bedrock is different from the normal OpenCode login flow: OpenCode consumes
-`AWS_BEARER_TOKEN_BEDROCK` and does not own this runner setup. Agent-assisted and manual setup use
-separate paths.
-
-For agent-assisted setup, first ask the user to supply the API key after they authorize creating or
-replacing the named profile. Do not start `auth login`; its hidden terminal prompt can block an
-orchestrator forever. Run the non-interactive skill helper instead:
+Amazon Bedrock uses one provider profile shared by every harness. When it is missing, offer to run
+the command after the user supplies the key, or show the same command for the user to run. Replace
+the example value with the literal key:
 
 ```bash
-python <skill-directory>/scripts/provision_auth.py <repository> \
-  --harness opencode --provider amazon-bedrock --profile bedrock
+./benchmarks/run.py auth set-key --provider amazon-bedrock \
+  --profile bedrock --api-key 'YOUR_API_KEY'
 ```
 
-Supply the token through the helper process's `AGENT_BENCH_BEDROCK_API_KEY` environment entry using
-the execution API. Never put it in the shell command, an argument, or a repository file. The helper
-fails immediately rather than prompting when the environment entry is absent. Never repeat or log
-the token. The runner later injects the stored token as `AWS_BEARER_TOKEN_BEDROCK`.
+If the user chooses agent setup, ask for the key only after that choice and execute the command
+without repeating the key. Literal arguments may remain in command history, process listings, and
+tool logs. `auth login` is not supported for Bedrock.
 
-For manual setup, give the user this runner command. The user executes it in their own terminal,
-where the runner can safely wait for hidden input. Do not launch it from an agent-assisted flow:
-
-```bash
-./benchmarks/run.py auth login --harness opencode \
-  --provider amazon-bedrock --profile bedrock
-```
-
-After a newly completed login, verify only the matching profile and harness:
+The runner injects the stored key as `AWS_BEARER_TOKEN_BEDROCK` without copying its credential file
+into the disposable OpenCode home. After setup, verify the matching profile and harness:
 
 ```bash
 ./benchmarks/run.py auth verify --harness opencode --profile bedrock

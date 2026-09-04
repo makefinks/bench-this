@@ -37,8 +37,9 @@ configuration-only E2E request.
 
 An explicit full-flow request with named treatments authorizes source-free auth verification and one
 run per treatment. It does not authorize creating or replacing credentials. Orchestrator credentials
-do not supply treatment credentials. Each treatment uses its explicitly named benchmark-owned
-profile under `~/.agent-bench/auth/<profile>/<harness>/`. If a requested profile is missing, the
+do not supply treatment credentials. Native credentials use the treatment's benchmark-owned profile
+under `~/.agent-bench/auth/<profile>/<harness>/`; shared API keys use
+`~/.agent-bench/auth/<profile>/providers/<provider>/`. If a requested profile is missing, the
 orchestrator reports the exact setup command and leaves that treatment unverified.
 
 Choose the target preparation branch from the user's request:

@@ -284,23 +284,30 @@ accept an arbitrary provider base URL.
 After creating the approved configurations, derive the unique harness, provider, and auth-profile
 requirements from those configurations. Run `./benchmarks/run.py build` once after all approved
 configurations exist so the image contains exactly their configured harness executables. Complete
-this build before authentication verification, `doctor`, or treatment execution. Check only for
-the exact benchmark-owned profile at
-`~/.agent-bench/auth/<profile>/<harness>/`. Reuse it when present, but never import credentials from
-the user's normal Copilot, OpenCode, GitHub CLI, browser, or home-directory state. An existing
-benchmark profile avoids another login; it still does not authorize a treatment run.
+this build before authentication verification, `doctor`, or treatment execution. Native login
+profiles live at `~/.agent-bench/auth/<profile>/<harness>/`; shared provider API keys live at
+`~/.agent-bench/auth/<profile>/providers/<provider>/`. Reuse an exact benchmark-owned profile when
+present, but never import credentials from the user's normal Copilot, OpenCode, GitHub CLI, browser,
+or home-directory state. An existing profile avoids another setup step; it still does not authorize
+a treatment run.
 
-For every missing benchmark profile, tell the user which approved configurations require it and
+For every missing shared provider API-key profile, tell the user which approved configurations need
+it and offer two choices: the agent receives the key and executes the provider reference's literal
+`auth set-key` command, or the user runs that command themselves. If the user chooses agent setup,
+receive the key only after that choice, pass it as the literal `--api-key` argument, and never
+repeat
+it in prose or command output. Command history, process listings, and tool logs may retain the
+literal argument. The command creates or replaces one provider profile shared by every harness.
+
+For every missing native login profile, tell the user which approved configurations require it and
 follow the selected harness and provider references to provide the exact `auth login` command. Tell
 the user to run it in a real terminal and choose the CLI's headless or device-code authentication
 option. Browser or localhost-callback options cannot return to the isolated container; a device-code
 flow may still ask the user to open a URL in their host browser. You should not drive the CLI's TTY
 or handle passwords, device codes, or provider responses. Do not start authentication merely because
-a configuration was created, and do not authenticate unused harnesses or providers. Receive an API
-key only where the harness or provider reference defines a non-interactive benchmark-safe route,
-such as the Bedrock helper. Follow the harness and provider references reached from
-[references/configuration.md](references/configuration.md)
-for the exact interactive CLI or Bedrock helper commands.
+a configuration was created, and do not authenticate unused harnesses or providers. Follow the
+harness and provider references reached from
+[references/configuration.md](references/configuration.md) for the exact setup command.
 
 After authentication completes, run the matching `auth verify` command. For an existing unverified
 profile, offer verification or defer its source-free identity preflight until the user authorizes
@@ -393,11 +400,14 @@ when its public contract, evaluator boundary, or difficulty requires fundamental
 
 ## Protect secrets
 
-Use only `~/.agent-bench/auth/<profile>/<harness>/`. Never copy a complete home directory, Docker
-socket, general GitHub credentials, hidden tests, or benchmark metadata into solver containers.
-Never run a diagnostic with that persistent profile mounted as a writable home; let the runner copy
-it into a disposable staged home. Pin the model and, for OpenCode, the provider. Treat a missing or
-mismatched identity as an infrastructure failure before mounting source.
+Use only `~/.agent-bench/auth/<profile>/<harness>/` for native credentials and
+`~/.agent-bench/auth/<profile>/providers/<provider>/` for shared API keys. Never copy a complete
+home
+directory, Docker socket, general GitHub credentials, hidden tests, or benchmark metadata into
+solver containers. Never run a diagnostic with persistent credentials mounted as a writable home;
+let the runner stage approved native files and inject provider keys through the environment. Pin the
+model and, for OpenCode, the provider. Treat a missing or mismatched identity as an infrastructure
+failure before mounting source.
 
 Read [references/formats.md](references/formats.md) when writing YAML or explaining runner commands.
 Load the task-quality and configuration references only at the workflow stages that name them.

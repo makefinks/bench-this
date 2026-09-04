@@ -7,17 +7,16 @@ import sqlite3
 import pytest
 
 from agent_bench.auth import (
-    auth_strategy_for,
-    BEDROCK_CREDENTIALS_FILE,
-    BEDROCK_TOKEN_ENVIRONMENT_VARIABLE,
-    COPILOT_BEDROCK_TOKEN_ENVIRONMENT_VARIABLE,
+    PROVIDER_CREDENTIALS_FILE,
     OMP_NATIVE_DATABASE,
     OPENCODE_AUTH_FILE,
     PI_AUTH_FILE,
+    auth_strategy_for,
     login,
     narrow_opencode_profile,
     prepare_home,
-    store_bedrock_credential,
+    provider_auth_profile_root,
+    set_provider_api_key,
     validate_auth_profile,
 )
 from agent_bench.docker import Mount
@@ -117,122 +116,82 @@ def bedrock_config(tmp_path):
     )
 
 
-def test_bedrock_profile_injects_token_without_staging_secret_file(tmp_path):
+@pytest.mark.parametrize(
+    "harness,expected_environment",
+    [
+        ("copilot", "COPILOT_PROVIDER_API_KEY"),
+        ("opencode", "AWS_BEARER_TOKEN_BEDROCK"),
+        ("omp", "AWS_BEARER_TOKEN_BEDROCK"),
+        ("pi", "AWS_BEARER_TOKEN_BEDROCK"),
+    ],
+)
+def test_one_bedrock_provider_profile_injects_key_for_every_harness_without_staging(
+    tmp_path, harness, expected_environment
+):
     auth_root = tmp_path / "auth"
-    profile = store_bedrock_credential(
-        "bedrock", "opencode", "fixture-token", auth_root
-    )
-    config = bedrock_config(tmp_path)
-
-    assert profile.stat().st_mode & 0o777 == 0o700
-    credential = profile / BEDROCK_CREDENTIALS_FILE
-    assert credential.stat().st_mode & 0o777 == 0o600
-    prepared = prepare_home(config, tmp_path / "home", auth_root)
-    home = prepared.home
-    assert dict(prepared.secret_environment) == {
-        BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"
-    }
-    assert not (home / BEDROCK_CREDENTIALS_FILE).exists()
-
-
-def test_copilot_bedrock_profile_maps_stored_token_to_byok_environment(tmp_path):
-    auth_root = tmp_path / "auth"
-    profile = store_bedrock_credential(
-        "bedrock", "copilot", "fixture-token", auth_root
+    profile = set_provider_api_key(
+        "bedrock", "amazon-bedrock", "fixture-token", auth_root
     )
     config = TreatmentConfig(
         **{
             **bedrock_config(tmp_path).__dict__,
-            "harness": "copilot",
-            "agent": None,
+            "harness": harness,
+            "agent": "build" if harness == "opencode" else None,
         }
     )
 
-    prepared = prepare_home(config, tmp_path / "copilot-home", auth_root)
+    prepared = prepare_home(config, tmp_path / f"{harness}-home", auth_root)
 
+    assert profile == provider_auth_profile_root(
+        "bedrock", "amazon-bedrock", auth_root
+    )
     assert json.loads(
-        (profile / BEDROCK_CREDENTIALS_FILE).read_text(encoding="utf-8")
-    ) == {BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"}
+        (profile / PROVIDER_CREDENTIALS_FILE).read_text(encoding="utf-8")
+    ) == {"api_key": "fixture-token"}
     assert dict(prepared.secret_environment) == {
-        COPILOT_BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"
+        expected_environment: "fixture-token"
     }
-    assert not (prepared.home / BEDROCK_CREDENTIALS_FILE).exists()
+    assert not (prepared.home / PROVIDER_CREDENTIALS_FILE).exists()
 
 
-def test_bedrock_profile_rejects_broadened_or_invalid_credentials(tmp_path):
+def test_bedrock_provider_profile_rejects_broadened_or_invalid_credentials(tmp_path):
     auth_root = tmp_path / "auth"
-    profile = auth_root / "bedrock/opencode"
+    profile = provider_auth_profile_root(
+        "bedrock", "amazon-bedrock", auth_root
+    )
     profile.mkdir(parents=True)
-    (profile / BEDROCK_CREDENTIALS_FILE).write_text(
-        json.dumps({BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: ""}),
+    (profile / PROVIDER_CREDENTIALS_FILE).write_text(
+        json.dumps({"api_key": ""}),
         encoding="utf-8",
     )
     config = bedrock_config(tmp_path)
 
-    with pytest.raises(ConfigurationError, match="valid bearer token"):
+    with pytest.raises(ConfigurationError, match="valid API key"):
         validate_auth_profile(config, auth_root)
+    with pytest.raises(ConfigurationError, match="valid API key"):
+        set_provider_api_key(
+            "bedrock", "amazon-bedrock", "replacement", auth_root
+        )
 
+    (profile / PROVIDER_CREDENTIALS_FILE).write_text(
+        json.dumps({"api_key": "old-key"}), encoding="utf-8"
+    )
     (profile / "unexpected").write_text("fixture", encoding="utf-8")
     with pytest.raises(ConfigurationError, match="unexpected files"):
         validate_auth_profile(config, auth_root)
+    with pytest.raises(ConfigurationError, match="broadened"):
+        set_provider_api_key(
+            "bedrock", "amazon-bedrock", "replacement", auth_root
+        )
 
 
-def test_bedrock_login_stores_runner_managed_token(tmp_path, monkeypatch):
-    auth_root = tmp_path / "auth"
-    monkeypatch.setattr(
-        "agent_bench.auth.auth_profile_root",
-        lambda profile, harness, _root=None: auth_root / profile / harness,
-    )
-    monkeypatch.setattr(
-        "agent_bench.auth.getpass.getpass", lambda _prompt: "fixture-token"
-    )
+def test_bedrock_auth_login_rejects_with_set_key_guidance(tmp_path):
     project = type("Project", (), {"image": type("Image", (), {"name": "unused"})()})()
 
-    login(project, "opencode", "bedrock", "amazon-bedrock")
+    with pytest.raises(ConfigurationError, match=r"auth set-key.*--api-key"):
+        login(project, "opencode", "bedrock", "amazon-bedrock")
 
-    credentials = json.loads(
-        (
-            auth_root
-            / "bedrock/opencode"
-            / BEDROCK_CREDENTIALS_FILE
-        ).read_text(encoding="utf-8")
-    )
-    assert credentials == {BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"}
-
-
-def test_omp_bedrock_profile_injects_only_selected_provider_token(tmp_path):
-    auth_root = tmp_path / "auth"
-    root = tmp_path / "configuration"
-    (root / "harness").mkdir(parents=True)
-    (root / "workspace").mkdir()
-    config = TreatmentConfig(
-        root=root,
-        id="omp-codex",
-        harness="omp",
-        provider="amazon-bedrock",
-        model="gpt-fixed",
-        harness_config=root / "harness",
-        workspace_config=root / "workspace",
-        auth_profile="codex",
-        arguments=[],
-    )
-
-    profile = store_bedrock_credential(
-        "bedrock", "omp", "fixture-token", auth_root
-    )
-
-    config = TreatmentConfig(**{**config.__dict__, "auth_profile": "bedrock"})
-    credentials = json.loads(
-        (profile / BEDROCK_CREDENTIALS_FILE).read_text(encoding="utf-8")
-    )
-    assert credentials == {BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"}
-    prepared = prepare_home(config, tmp_path / "home", auth_root)
-    home = prepared.home
-    assert dict(prepared.secret_environment) == {
-        BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"
-    }
-    assert not (home / ".omp/agent/agent.db").exists()
-    assert not (home / "credentials.json").exists()
+    assert not (tmp_path / "auth").exists()
 
 
 def test_omp_oauth_profile_stages_native_database_without_environment_token(tmp_path):
@@ -357,56 +316,27 @@ def test_cli_profile_validation_rejects_state_outside_credential_artifact(tmp_pa
         validate_auth_profile(copilot_config, auth_root)
 
 
-def test_pi_bedrock_bearer_profile_injects_token_without_staging_secret_file(tmp_path):
+def test_harness_scoped_bedrock_profile_is_rejected_with_set_key_guidance(tmp_path):
     auth_root = tmp_path / "auth"
-    profile = store_bedrock_credential(
-        "pi-auth",
-        "pi",
-        "fixture-token",
-        auth_root,
+    legacy = auth_root / "pi-auth/pi"
+    legacy.mkdir(parents=True)
+    (legacy / "credentials.json").write_text(
+        json.dumps({"AWS_BEARER_TOKEN_BEDROCK": "fixture-token"}),
+        encoding="utf-8",
     )
     config = pi_config(tmp_path, "amazon-bedrock")
 
-    assert profile.stat().st_mode & 0o777 == 0o700
-    credentials = profile / BEDROCK_CREDENTIALS_FILE
-    assert credentials.stat().st_mode & 0o777 == 0o600
-    assert validate_auth_profile(config, auth_root) == profile
-    prepared = prepare_home(config, tmp_path / "pi-bedrock-home", auth_root)
-    assert dict(prepared.secret_environment) == {
-        BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-token"
-    }
-    home = prepared.home
-    assert not (home / BEDROCK_CREDENTIALS_FILE).exists()
+    with pytest.raises(ConfigurationError) as raised:
+        prepare_home(config, tmp_path / "pi-bedrock-home", auth_root)
 
-    (profile / "unexpected").write_text("fixture", encoding="utf-8")
-    with pytest.raises(ConfigurationError, match="unexpected files"):
-        validate_auth_profile(config, auth_root)
-    (profile / "unexpected").unlink()
-
-    credentials.write_text(json.dumps({"unrelated": "shape"}) + "\n")
-    with pytest.raises(ConfigurationError, match="bearer token"):
-        validate_auth_profile(config, auth_root)
-
-
-def test_pi_bedrock_login_stores_runner_managed_token(tmp_path, monkeypatch):
-    auth_root = tmp_path / "auth"
-    monkeypatch.setattr(
-        "agent_bench.auth.auth_profile_root",
-        lambda profile, harness, _root=None: auth_root / profile / harness,
+    message = str(raised.value)
+    assert "harness-scoped amazon-bedrock" in message
+    assert (
+        "auth set-key --provider amazon-bedrock --profile pi-auth --api-key <api-key>"
+        in message
     )
-    monkeypatch.setattr(
-        "agent_bench.auth.getpass.getpass", lambda _prompt: "fixture-api-key"
-    )
-    project = type("Project", (), {"image": type("Image", (), {"name": "unused"})()})()
+    assert "ACTION_REQUIRED: auth-set-key" in message
 
-    login(project, "pi", "bedrock", "amazon-bedrock")
-
-    credentials = json.loads(
-        (auth_root / "bedrock" / "pi" / BEDROCK_CREDENTIALS_FILE).read_text(
-            encoding="utf-8"
-        )
-    )
-    assert credentials == {BEDROCK_TOKEN_ENVIRONMENT_VARIABLE: "fixture-api-key"}
 
 class FakeInteractiveDocker:
     def __init__(self, populate=None, image_exists=True, error=None):

@@ -36,20 +36,21 @@ python <skill-directory>/scripts/configure.py <repository> \
 
 ## Authentication
 
-Amazon Bedrock is the token-based exception to OMP's native OAuth flow. Run the non-interactive
-helper without placing the token in its command:
+Amazon Bedrock uses one provider profile shared by every harness. When it is missing, offer to run
+the command after the user supplies the key, or show the same command for the user to run. Replace
+the example value with the literal key:
 
 ```bash
-python <skill-directory>/scripts/provision_auth.py <repository> \
-  --harness omp --provider amazon-bedrock --profile bedrock
+./benchmarks/run.py auth set-key --provider amazon-bedrock \
+  --profile bedrock --api-key 'YOUR_API_KEY'
 ```
 
-Supply the token through the helper process's `AGENT_BENCH_BEDROCK_API_KEY` environment entry using
-the execution API. Never put it in the shell command, an argument, or a repository file. The helper
-fails immediately rather than prompting when the environment entry is absent. Never repeat or log
-the token.
+If the user chooses agent setup, ask for the key only after that choice and execute the command
+without repeating the key. Literal arguments may remain in command history, process listings, and
+tool logs. `auth login` is not supported for Bedrock.
 
-After provisioning, verify only the matching OMP profile:
+The runner injects the key as `AWS_BEARER_TOKEN_BEDROCK` without staging its credential file. After
+setup, verify only the matching OMP profile:
 
 ```bash
 ./benchmarks/run.py auth verify --harness omp --profile bedrock

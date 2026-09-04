@@ -20,6 +20,24 @@ def test_skill_metadata_matches_its_directory() -> None:
     assert body.strip()
 
 
+def test_skill_documents_shared_provider_key_setup() -> None:
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    bedrock_references = list(
+        (SKILL_ROOT / "references/configuration/harnesses").glob(
+            "*/providers/amazon-bedrock.md"
+        )
+    )
+
+    assert "auth set-key" in skill
+    assert not (SKILL_ROOT / "scripts/provision_auth.py").exists()
+    assert len(bedrock_references) == 4
+    for reference in bedrock_references:
+        text = reference.read_text(encoding="utf-8")
+        assert "auth set-key --provider amazon-bedrock" in text
+        assert "--api-key 'YOUR_API_KEY'" in text
+        assert "provision_auth.py" not in text
+
+
 def test_local_markdown_links_resolve() -> None:
     missing = []
     paths = [ROOT / "README.md", ROOT / "AGENTS.md", *SKILL_ROOT.rglob("*.md")]

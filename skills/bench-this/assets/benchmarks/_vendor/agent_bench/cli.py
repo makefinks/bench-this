@@ -6,8 +6,8 @@ import sys
 from statistics import mean
 from pathlib import Path
 
-from .auth import login, probe_bedrock_wire_api
-from .catalog import HARNESS_CATALOG
+from .auth import login, probe_bedrock_wire_api, set_provider_api_key
+from .catalog import HARNESS_CATALOG, shared_api_key_providers
 from .config import (
     discover_configurations,
     discover_tasks,
@@ -74,6 +74,12 @@ def _parser() -> argparse.ArgumentParser:
 
     auth = commands.add_parser("auth")
     auth_commands = auth.add_subparsers(dest="auth_command", required=True)
+    set_key = auth_commands.add_parser("set-key")
+    set_key.add_argument(
+        "--provider", choices=shared_api_key_providers(), required=True
+    )
+    set_key.add_argument("--profile", required=True)
+    set_key.add_argument("--api-key", required=True)
     login = auth_commands.add_parser("login")
     login.add_argument(
         "--harness", choices=sorted(HARNESS_CATALOG), required=True
@@ -111,6 +117,12 @@ def main(argv=None) -> int:
         if args.command == "init":
             destination = scaffold(Path(args.project))
             print(f"Created {destination}")
+            return 0
+        if args.command == "auth" and args.auth_command == "set-key":
+            destination = set_provider_api_key(
+                args.profile, args.provider, args.api_key
+            )
+            print(f"Saved {args.provider} profile under {destination}")
             return 0
 
         project = load_project(_benchmark_dir(args.benchmark_dir))
