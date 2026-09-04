@@ -1,437 +1,1217 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>bench-this</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #050505;
-      --panel: rgba(10, 8, 7, .96);
-      --panel-2: #121010;
-      --text: #FAF9F7;
-      --muted: #A8A29E;
-      --line: #2E2A28;
-      --line-bright: #6B625C;
-      --accent: #FF6B35;
-      --good: #3DDC84;
-      --bad: #FF4D6D;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      color: var(--text);
-      background: var(--bg);
-      font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    }
-    button, select { font: inherit; }
-    main { position: relative; width: min(1440px, calc(100% - 40px)); margin: auto; padding: 34px 0 72px; }
-    header { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 28px; margin-bottom: 26px; }
-    h1 { margin: 0; font: 500 clamp(34px, 5vw, 62px)/.95 ui-sans-serif, system-ui, sans-serif; letter-spacing: -.055em; }
-    h2 { margin: 0; font: 650 15px/1.2 ui-sans-serif, system-ui, sans-serif; letter-spacing: -.015em; }
-    .section-id { color: var(--accent); font-size: 10px; font-weight: 750; letter-spacing: .16em; text-transform: uppercase; }
-    th { color: #b5b5b5; font-size: 10px; font-weight: 750; letter-spacing: .16em; text-transform: uppercase; }
-    .controls { display: flex; align-items: center; gap: 8px; }
-    button, select {
-      min-height: 40px;
-      border: 1px solid var(--line-bright);
-      border-radius: 3px;
-      padding: 0 13px;
-      color: var(--text);
-      background: #0a0a0a;
-    }
-    select { min-width: min(430px, 48vw); }
-    button { cursor: pointer; color: #050505; background: var(--accent); border-color: var(--accent); font-weight: 750; }
-    button:hover { background: #FF8A5C; }
-    button:focus-visible, select:focus-visible, .source:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
-    #file { position: absolute; width: 1px; height: 1px; opacity: 0; }
-    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); margin-bottom: 12px; background: var(--panel); }
-    .card { min-width: 0; padding: 17px 18px 18px; border-right: 1px solid var(--line); }
-    .card:last-child { border-right: 0; }
-    .metric-label { color: var(--muted); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
-    .metric-value { margin-top: 9px; font: 550 clamp(25px, 3.4vw, 38px)/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: -.045em; }
-    .metric-note { margin-top: 7px; color: var(--muted); font-size: 11px; }
-    .grid { display: grid; gap: 12px; }
-    .panel { min-width: 0; border: 1px solid var(--line); background: var(--panel); }
-    .wide, .table-panel { grid-column: 1 / -1; }
-    .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 55px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
-    .panel-title { display: flex; align-items: baseline; gap: 13px; }
-    .subtle { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
-    .legend { display: flex; flex-wrap: wrap; justify-content: end; gap: 14px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
-    .legend span { display: inline-flex; align-items: center; gap: 6px; }
-    .swatch { width: 15px; height: 8px; border-radius: 2px; background: var(--swatch); }
-    .axis-picker { display: flex; align-items: center; gap: 7px; }
-    .axis-picker button, .labels-toggle { min-height: 30px; padding: 0 10px; color: var(--muted); background: transparent; border-color: var(--line); font-size: 10px; text-transform: uppercase; transition: color .18s, background .18s, border-color .18s; }
-    .axis-picker button:hover, .labels-toggle:hover { color: var(--text); background: #111; }
-    .axis-picker button[aria-pressed="true"], .labels-toggle[aria-pressed="true"] { color: #050505; background: var(--accent); border-color: var(--accent); }
-    .frontier-controls { display: flex; align-items: center; gap: 12px; }
-    .controls-divider { width: 1px; align-self: stretch; background: var(--line-bright); }
-    .token-chart { display: grid; gap: 21px; padding: 20px 16px 24px; }
-    .chart-row { display: grid; grid-template-columns: minmax(200px, 27%) 1fr 80px; gap: 16px; align-items: center; }
-    .chart-name { min-width: 0; overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
-    .chart-value { color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
-    .track { height: 22px; padding: 3px; border: 1px solid var(--line-bright); background: #0c0c0c; }
-    .stack { display: flex; height: 100%; min-width: 1px; }
-    .segment { min-width: 0; height: 100%; background: var(--segment); }
-    .segment + .segment { border-left: 2px solid #050505; }
-    .breakdown { grid-column: 2 / 4; display: flex; flex-wrap: wrap; gap: 5px 16px; margin-top: -10px; color: var(--muted); font-size: 10px; }
-    .breakdown b { color: var(--text); font-weight: 500; }
-    .frontier { overflow-x: auto; padding: 18px 16px 20px; }
-    .frontier svg { display: block; width: 100%; min-width: 700px; height: auto; overflow: visible; }
-    .frontier-grid { stroke: #242424; stroke-width: 1; }
-    .frontier-axis { fill: var(--muted); font-size: 11px; }
-    .frontier-line { fill: none; stroke: var(--text); stroke-width: 1.5; stroke-dasharray: 5 5; }
-    .frontier-mark { cursor: help; }
-    .frontier-point { stroke: #050505; stroke-width: 2; transform-box: fill-box; transform-origin: center; transition: transform .12s, stroke-width .12s; }
-    .frontier-point.pareto { stroke: var(--text); stroke-width: 3; }
-    .frontier-mark:hover .frontier-point, .frontier-mark:focus .frontier-point { stroke: var(--text); stroke-width: 3; transform: scale(1.25); }
-    .frontier-index { fill: #050505; font-size: 9px; font-weight: 800; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
-    .frontier-point-label { fill: var(--text); stroke: var(--panel); stroke-width: 4px; paint-order: stroke; font-size: 9px; opacity: 0; pointer-events: none; }
-    .frontier.labels-visible .frontier-point-label { opacity: 1; }
-    .frontier-tooltip { position: fixed; z-index: 1000; width: min(290px, calc(100vw - 24px)); padding: 13px 14px; border: 1px solid var(--line-bright); color: var(--text); background: #0c0c0c; box-shadow: 0 12px 35px #000; pointer-events: none; }
-    .tooltip-kicker { margin-bottom: 5px; color: var(--accent); font-size: 9px; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; }
-    .tooltip-title { overflow-wrap: anywhere; font-weight: 650; }
-    .tooltip-grid { display: grid; grid-template-columns: 1fr auto; gap: 5px 14px; margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
-    .tooltip-grid b { color: var(--text); font-weight: 500; text-align: right; }
-    .frontier-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin-top: 14px; border: 1px solid var(--line); background: var(--line); }
-    .frontier-key { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 9px 11px; background: var(--panel-2); }
-    .frontier-key i { width: 9px; height: 9px; background: var(--point); }
-    .frontier-key span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .frontier-key b { color: var(--muted); font-size: 10px; font-weight: 500; }
-    .table-wrap { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 13px 16px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
-    th { color: var(--muted); }
-    tr:last-child td { border-bottom: 0; }
-    tbody tr:hover { background: #111; }
-    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-    .status { display: inline-flex; align-items: center; gap: 7px; font-weight: 650; }
-    .status::before { content: ""; width: 6px; height: 6px; background: var(--bad); }
-    .status.pass::before { background: var(--good); }
-    .empty { padding: 30px; color: var(--muted); text-align: center; }
-    @media (max-width: 820px) {
-      main { width: min(100% - 24px, 1440px); padding-top: 24px; }
-      header { grid-template-columns: 1fr; align-items: start; }
-      .controls { width: 100%; }
-      select { min-width: 0; flex: 1; }
-      .metrics { grid-template-columns: 1fr 1fr; }
-      .card:nth-child(2) { border-right: 0; }
-      .card:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
-      .grid { grid-template-columns: 1fr; }
-      .panel { grid-column: 1; }
-      .chart-row { grid-template-columns: 1fr 70px; gap: 8px; }
-      .chart-row .track { grid-column: 1 / -1; }
-      .breakdown { grid-column: 1 / -1; margin-top: -5px; }
-      .frontier-legend { grid-template-columns: 1fr; min-width: 700px; }
-    }
-    @media (max-width: 480px) {
-      .controls { align-items: stretch; flex-direction: column; }
-      .metrics { grid-template-columns: 1fr; }
-      .card { border-right: 0; border-bottom: 1px solid var(--line); }
-      .card:last-child { border-bottom: 0; }
-      .legend { justify-content: start; }
-      .panel-head { align-items: start; flex-direction: column; }
-      .frontier-controls { width: 100%; flex-wrap: wrap; }
-      .controls-divider { display: none; }
-      .axis-picker { width: 100%; }
-      .axis-picker button, .labels-toggle { flex: 1; }
-    }
-  </style>
-</head>
-<body>
-  <main>
-    <header>
-      <h1>bench-this</h1>
-      <div class="controls">
-        <select id="experiment" aria-label="Experiment"></select>
-        <button id="choose" type="button">Open results</button>
-        <input id="file" type="file" accept=".jsonl,.json,application/json">
-      </div>
-    </header>
-
-    <section class="metrics" id="metrics"></section>
-    <section class="grid">
-      <article class="panel wide">
-        <div class="panel-head">
-          <div class="panel-title"><span class="section-id">01</span><h2>Quality frontier</h2></div>
-          <div class="frontier-controls">
-            <div class="axis-picker" role="group" aria-label="Compare quality by">
-              <span class="subtle">Compare by</span>
-              <button type="button" data-frontier="cost" aria-pressed="true">Cost</button>
-              <button type="button" data-frontier="tokens" aria-pressed="false">Tokens</button>
-              <button type="button" data-frontier="runtime" aria-pressed="false">Runtime</button>
-            </div>
-            <span class="controls-divider" aria-hidden="true"></span>
-            <button id="toggle-labels" class="labels-toggle" type="button" aria-pressed="true">Show labels</button>
-          </div>
-        </div>
-        <div class="frontier labels-visible" id="frontier"></div>
-      </article>
-      <article class="panel wide">
-        <div class="panel-head">
-          <div class="panel-title"><span class="section-id">02</span><h2>Token composition by configuration</h2></div>
-          <div class="legend" id="token-legend"></div>
-        </div>
-        <div class="token-chart" id="token-chart"></div>
-      </article>
-      <article class="panel table-panel">
-        <div class="panel-head">
-          <div class="panel-title"><span class="section-id">03</span><h2>Run ledger</h2></div>
-          <span class="subtle">One row per task × configuration</span>
-        </div>
-        <div class="table-wrap"><table>
-          <thead><tr><th>Status</th><th>Task</th><th>Configuration</th><th class="num">Tokens</th><th class="num">Cost</th><th class="num">Runtime</th></tr></thead>
-          <tbody id="runs"></tbody>
-        </table></div>
-      </article>
-    </section>
-  </main>
-  <aside class="frontier-tooltip" id="frontier-tooltip" role="tooltip" hidden></aside>
-
-  <script src="results/viewer-data.js"></script>
-  <script>
-    const tokenSeries = [
-      ["Cached", "cache_read_tokens", "#6F6A64"],
-      ["Input", "input_tokens", "#7C9CBF"],
-      ["Cache write", "cache_write_tokens", "#8B7CFF"],
-      ["Reasoning", "reasoning_tokens", "#F43F8E"],
-      ["Output", "output_tokens", "#FF5A26"]
-    ];
-    let allRows = [];
-    let frontierMetric = "cost";
-    let frontierPositions = new Map();
-    let showFrontierLabels = true;
-    const $ = id => document.getElementById(id);
-    const compact = value => new Intl.NumberFormat("en", {notation:"compact", maximumFractionDigits:1}).format(value);
-    const money = value => value == null ? "—" : new Intl.NumberFormat("en", {style:"currency", currency:"USD", minimumFractionDigits:3, maximumFractionDigits:3}).format(value);
-    const average = values => values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
-    const tokens = row => tokenSeries.reduce((sum, [, key]) => sum + (row[key] || 0), 0);
-    const cost = row => row.native_cost_usd ?? row.estimated_cost_usd ?? null;
-    const frontierMetrics = {
-      cost: {value: cost, format: money, label: "AVERAGE COST / RUN (USD)"},
-      tokens: {value: tokens, format: compact, label: "AVERAGE TOKENS / RUN"},
-      runtime: {value: row => row.duration_seconds ?? null, format: value => `${value.toFixed(1)}s`, label: "AVERAGE RUNTIME / RUN"}
-    };
-    const quality = row => {
-      const checks = [...Object.values(row.public_test_results || {}), ...Object.values(row.group_results || {})];
-      return checks.length ? checks.filter(Boolean).length / checks.length : Number(row.passed);
-    };
-    const escape = value => String(value ?? "—").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[char]);
-
-    function parse(text) {
-      const rows = text.split(/\r?\n/).filter(line => line.trim()).map((line, index) => {
-        try { return JSON.parse(line); }
-        catch { throw new Error(`Line ${index + 1} is not valid JSON`); }
-      });
-      if (!rows.length) throw new Error("The file contains no runs");
-      if (rows.some(row => typeof row.task !== "string" || typeof row.configuration !== "string" || typeof row.passed !== "boolean"))
-        throw new Error("This does not look like benchmark runs JSONL");
-      return rows;
-    }
-
-    function experiments(rows) {
-      return [...new Set(rows.map(row => row.experiment_id || "historical"))];
-    }
-
-    function setRows(rows) {
-      allRows = rows;
-      const ids = experiments(rows);
-      $("experiment").replaceChildren(...(ids.length ? ids.map(id => new Option(id === "historical" ? "Historical runs" : id, id)) : [new Option("No results yet", "")]))
-      $("experiment").value = ids.at(-1) ?? "";
-      render();
-    }
-
-    function grouped(rows) {
-      return Object.entries(rows.reduce((groups, row) => {
-        (groups[row.configuration] ||= []).push(row);
-        return groups;
-      }, {})).sort(([a], [b]) => a.localeCompare(b));
-    }
-
-    function paretoNames(stats) {
-      let best = -1;
-      const names = new Set();
-      for (const stat of [...stats].sort((a, b) => a.value - b.value)) {
-        if (stat.quality > best) {
-          names.add(stat.name);
-          best = stat.quality;
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>bench-this</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #050505;
+        --panel: rgba(10, 8, 7, 0.96);
+        --panel-2: #121010;
+        --text: #faf9f7;
+        --muted: #a8a29e;
+        --line: #2e2a28;
+        --line-bright: #6b625c;
+        --accent: #ff6b35;
+        --good: #3ddc84;
+        --bad: #ff4d6d;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--text);
+        background: var(--bg);
+        font:
+          14px/1.45 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          monospace;
+      }
+      button,
+      select {
+        font: inherit;
+      }
+      main {
+        position: relative;
+        width: min(1440px, calc(100% - 40px));
+        margin: auto;
+        padding: 34px 0 72px;
+      }
+      header {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: end;
+        gap: 28px;
+        margin-bottom: 26px;
+      }
+      h1 {
+        margin: 0;
+        font:
+          500 clamp(34px, 5vw, 62px) / 0.95 ui-sans-serif,
+          system-ui,
+          sans-serif;
+        letter-spacing: -0.055em;
+      }
+      h2 {
+        margin: 0;
+        font:
+          650 15px/1.2 ui-sans-serif,
+          system-ui,
+          sans-serif;
+        letter-spacing: -0.015em;
+      }
+      .section-id {
+        color: var(--accent);
+        font-size: 10px;
+        font-weight: 750;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+      th {
+        color: #b5b5b5;
+        font-size: 10px;
+        font-weight: 750;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      button,
+      select {
+        min-height: 40px;
+        border: 1px solid var(--line-bright);
+        border-radius: 3px;
+        padding: 0 13px;
+        color: var(--text);
+        background: #0a0a0a;
+      }
+      select {
+        min-width: min(430px, 48vw);
+      }
+      button {
+        cursor: pointer;
+        color: #050505;
+        background: var(--accent);
+        border-color: var(--accent);
+        font-weight: 750;
+      }
+      button:hover {
+        background: #ff8a5c;
+      }
+      button:focus-visible,
+      select:focus-visible,
+      .source:focus-within {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      #file {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        border: 1px solid var(--line);
+        margin-bottom: 12px;
+        background: var(--panel);
+      }
+      .card {
+        min-width: 0;
+        padding: 17px 18px 18px;
+        border-right: 1px solid var(--line);
+      }
+      .card:last-child {
+        border-right: 0;
+      }
+      .metric-label {
+        color: var(--muted);
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      .metric-value {
+        margin-top: 9px;
+        font:
+          550 clamp(25px, 3.4vw, 38px) / 1 ui-sans-serif,
+          system-ui,
+          sans-serif;
+        letter-spacing: -0.045em;
+      }
+      .metric-note {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .grid {
+        display: grid;
+        gap: 12px;
+      }
+      .panel {
+        min-width: 0;
+        border: 1px solid var(--line);
+        background: var(--panel);
+      }
+      .wide,
+      .table-panel {
+        grid-column: 1 / -1;
+      }
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        min-height: 55px;
+        padding: 13px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+      .panel-title {
+        display: flex;
+        align-items: baseline;
+        gap: 13px;
+      }
+      .subtle {
+        color: var(--muted);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: end;
+        gap: 14px;
+        color: var(--muted);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .swatch {
+        width: 15px;
+        height: 8px;
+        border-radius: 2px;
+        background: var(--swatch);
+      }
+      .axis-picker {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .axis-picker button,
+      .labels-toggle {
+        min-height: 30px;
+        padding: 0 10px;
+        color: var(--muted);
+        background: transparent;
+        border-color: var(--line);
+        font-size: 10px;
+        text-transform: uppercase;
+        transition:
+          color 0.18s,
+          background 0.18s,
+          border-color 0.18s;
+      }
+      .axis-picker button:hover,
+      .labels-toggle:hover {
+        color: var(--text);
+        background: #111;
+      }
+      .axis-picker button[aria-pressed="true"],
+      .labels-toggle[aria-pressed="true"] {
+        color: #050505;
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      .frontier-controls {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .controls-divider {
+        width: 1px;
+        align-self: stretch;
+        background: var(--line-bright);
+      }
+      .token-chart {
+        display: grid;
+        gap: 21px;
+        padding: 20px 16px 24px;
+      }
+      .chart-row {
+        display: grid;
+        grid-template-columns: minmax(200px, 27%) 1fr 80px;
+        gap: 16px;
+        align-items: center;
+      }
+      .chart-name {
+        min-width: 0;
+        overflow: hidden;
+        color: var(--text);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .chart-value {
+        color: var(--text);
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .track {
+        height: 22px;
+        padding: 3px;
+        border: 1px solid var(--line-bright);
+        background: #0c0c0c;
+      }
+      .stack {
+        display: flex;
+        height: 100%;
+        min-width: 1px;
+      }
+      .segment {
+        min-width: 0;
+        height: 100%;
+        background: var(--segment);
+      }
+      .segment + .segment {
+        border-left: 2px solid #050505;
+      }
+      .breakdown {
+        grid-column: 2 / 4;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px 16px;
+        margin-top: -10px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .breakdown b {
+        color: var(--text);
+        font-weight: 500;
+      }
+      .frontier {
+        overflow-x: auto;
+        padding: 18px 16px 20px;
+      }
+      .frontier svg {
+        display: block;
+        width: 100%;
+        min-width: 700px;
+        height: auto;
+        overflow: visible;
+      }
+      .frontier-grid {
+        stroke: #242424;
+        stroke-width: 1;
+      }
+      .frontier-axis {
+        fill: var(--muted);
+        font-size: 11px;
+      }
+      .frontier-line {
+        fill: none;
+        stroke: var(--text);
+        stroke-width: 1.5;
+        stroke-dasharray: 5 5;
+      }
+      .frontier-mark {
+        cursor: help;
+      }
+      .frontier-point {
+        stroke: #050505;
+        stroke-width: 2;
+        transform-box: fill-box;
+        transform-origin: center;
+        transition:
+          transform 0.12s,
+          stroke-width 0.12s;
+      }
+      .frontier-point.pareto {
+        stroke: var(--text);
+        stroke-width: 3;
+      }
+      .frontier-mark:hover .frontier-point,
+      .frontier-mark:focus .frontier-point {
+        stroke: var(--text);
+        stroke-width: 3;
+        transform: scale(1.25);
+      }
+      .frontier-index {
+        fill: #050505;
+        font-size: 9px;
+        font-weight: 800;
+        text-anchor: middle;
+        dominant-baseline: central;
+        pointer-events: none;
+      }
+      .frontier-point-label {
+        fill: var(--text);
+        stroke: var(--panel);
+        stroke-width: 4px;
+        paint-order: stroke;
+        font-size: 9px;
+        opacity: 0;
+        pointer-events: none;
+      }
+      .frontier.labels-visible .frontier-point-label {
+        opacity: 1;
+      }
+      .frontier-tooltip {
+        position: fixed;
+        z-index: 1000;
+        width: min(290px, calc(100vw - 24px));
+        padding: 13px 14px;
+        border: 1px solid var(--line-bright);
+        color: var(--text);
+        background: #0c0c0c;
+        box-shadow: 0 12px 35px #000;
+        pointer-events: none;
+      }
+      .tooltip-kicker {
+        margin-bottom: 5px;
+        color: var(--accent);
+        font-size: 9px;
+        font-weight: 750;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      .tooltip-title {
+        overflow-wrap: anywhere;
+        font-weight: 650;
+      }
+      .tooltip-grid {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 5px 14px;
+        margin-top: 11px;
+        padding-top: 10px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .tooltip-grid b {
+        color: var(--text);
+        font-weight: 500;
+        text-align: right;
+      }
+      .frontier-legend {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1px;
+        margin-top: 14px;
+        border: 1px solid var(--line);
+        background: var(--line);
+      }
+      .frontier-key {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 9px;
+        padding: 9px 11px;
+        background: var(--panel-2);
+      }
+      .frontier-key i {
+        width: 9px;
+        height: 9px;
+        background: var(--point);
+      }
+      .frontier-key span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .frontier-key b {
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 500;
+      }
+      .table-wrap {
+        overflow-x: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 13px 16px;
+        text-align: left;
+        border-bottom: 1px solid var(--line);
+        white-space: nowrap;
+      }
+      th {
+        color: var(--muted);
+      }
+      tr:last-child td {
+        border-bottom: 0;
+      }
+      tbody tr:hover {
+        background: #111;
+      }
+      td.num,
+      th.num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-weight: 650;
+      }
+      .status::before {
+        content: "";
+        width: 6px;
+        height: 6px;
+        background: var(--bad);
+      }
+      .status.pass::before {
+        background: var(--good);
+      }
+      .empty {
+        padding: 30px;
+        color: var(--muted);
+        text-align: center;
+      }
+      @media (max-width: 820px) {
+        main {
+          width: min(100% - 24px, 1440px);
+          padding-top: 24px;
+        }
+        header {
+          grid-template-columns: 1fr;
+          align-items: start;
+        }
+        .controls {
+          width: 100%;
+        }
+        select {
+          min-width: 0;
+          flex: 1;
+        }
+        .metrics {
+          grid-template-columns: 1fr 1fr;
+        }
+        .card:nth-child(2) {
+          border-right: 0;
+        }
+        .card:nth-child(-n + 2) {
+          border-bottom: 1px solid var(--line);
+        }
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        .panel {
+          grid-column: 1;
+        }
+        .chart-row {
+          grid-template-columns: 1fr 70px;
+          gap: 8px;
+        }
+        .chart-row .track {
+          grid-column: 1 / -1;
+        }
+        .breakdown {
+          grid-column: 1 / -1;
+          margin-top: -5px;
+        }
+        .frontier-legend {
+          grid-template-columns: 1fr;
+          min-width: 700px;
         }
       }
-      return names;
-    }
+      @media (max-width: 480px) {
+        .controls {
+          align-items: stretch;
+          flex-direction: column;
+        }
+        .metrics {
+          grid-template-columns: 1fr;
+        }
+        .card {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+        .card:last-child {
+          border-bottom: 0;
+        }
+        .legend {
+          justify-content: start;
+        }
+        .panel-head {
+          align-items: start;
+          flex-direction: column;
+        }
+        .frontier-controls {
+          width: 100%;
+          flex-wrap: wrap;
+        }
+        .controls-divider {
+          display: none;
+        }
+        .axis-picker {
+          width: 100%;
+        }
+        .axis-picker button,
+        .labels-toggle {
+          flex: 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>bench-this</h1>
+        <div class="controls">
+          <select id="experiment" aria-label="Experiment"></select>
+          <button id="choose" type="button">Open results</button>
+          <input id="file" type="file" accept=".jsonl,.json,application/json" />
+        </div>
+      </header>
 
-    function renderFrontier(groups) {
-      $("frontier-tooltip").hidden = true;
-      const metric = frontierMetrics[frontierMetric];
-      const palette = ["#FF6B35", "#FF9F1C", "#8B7CFF", "#2DD4BF", "#F43F8E", "#FFD166"];
-      const stats = groups.map(([name, values], index) => {
-        const measurements = values.map(metric.value).filter(value => value != null);
-        const costs = values.map(cost).filter(value => value != null);
-        const runtimes = values.map(row => row.duration_seconds).filter(value => value != null);
-        return {
-          name,
-          color: palette[index % palette.length],
-          value: average(measurements),
-          quality: values.reduce((sum, row) => sum + quality(row), 0) / values.length,
-          runs: values.length,
-          passed: values.filter(row => row.passed).length,
-          cost: average(costs),
-          tokens: average(values.map(tokens)),
-          runtime: average(runtimes)
-        };
-      }).filter(stat => stat.value != null);
-      if (!stats.length) {
-        frontierPositions = new Map();
-        $("frontier").innerHTML = `<div class="empty">No ${frontierMetric} telemetry</div>`;
-        return;
+      <section class="metrics" id="metrics"></section>
+      <section class="grid">
+        <article class="panel wide">
+          <div class="panel-head">
+            <div class="panel-title">
+              <span class="section-id">01</span>
+              <h2>Quality frontier</h2>
+            </div>
+            <div class="frontier-controls">
+              <div
+                class="axis-picker"
+                role="group"
+                aria-label="Compare quality by"
+              >
+                <span class="subtle">Compare by</span>
+                <button type="button" data-frontier="cost" aria-pressed="true">
+                  Cost
+                </button>
+                <button
+                  type="button"
+                  data-frontier="tokens"
+                  aria-pressed="false"
+                >
+                  Tokens
+                </button>
+                <button
+                  type="button"
+                  data-frontier="runtime"
+                  aria-pressed="false"
+                >
+                  Runtime
+                </button>
+              </div>
+              <span class="controls-divider" aria-hidden="true"></span>
+              <button
+                id="toggle-labels"
+                class="labels-toggle"
+                type="button"
+                aria-pressed="true"
+              >
+                Show labels
+              </button>
+            </div>
+          </div>
+          <div class="frontier labels-visible" id="frontier"></div>
+        </article>
+        <article class="panel wide">
+          <div class="panel-head">
+            <div class="panel-title">
+              <span class="section-id">02</span>
+              <h2>Token composition by configuration</h2>
+            </div>
+            <div class="legend" id="token-legend"></div>
+          </div>
+          <div class="token-chart" id="token-chart"></div>
+        </article>
+        <article class="panel table-panel">
+          <div class="panel-head">
+            <div class="panel-title">
+              <span class="section-id">03</span>
+              <h2>Run ledger</h2>
+            </div>
+            <span class="subtle">One row per task × configuration</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Task</th>
+                  <th>Configuration</th>
+                  <th class="num">Tokens</th>
+                  <th class="num">Cost</th>
+                  <th class="num">Runtime</th>
+                </tr>
+              </thead>
+              <tbody id="runs"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+    </main>
+    <aside
+      class="frontier-tooltip"
+      id="frontier-tooltip"
+      role="tooltip"
+      hidden
+    ></aside>
+
+    <script src="results/viewer-data.js"></script>
+    <script>
+      const TOKEN_SERIES = [
+        ["Cached", "cache_read_tokens", "#6F6A64"],
+        ["Input", "input_tokens", "#7C9CBF"],
+        ["Cache write", "cache_write_tokens", "#8B7CFF"],
+        ["Reasoning", "reasoning_tokens", "#F43F8E"],
+        ["Output", "output_tokens", "#FF5A26"],
+      ];
+      const FRONTIER_COLORS = [
+        "#FF6B35",
+        "#FF9F1C",
+        "#8B7CFF",
+        "#2DD4BF",
+        "#F43F8E",
+        "#FFD166",
+      ];
+      const EMPTY_MESSAGE =
+        "No runs yet — run the benchmark or open a results file";
+
+      let allRows = [];
+      let frontierMetric = "cost";
+      let frontierPositions = new Map();
+      let showFrontierLabels = true;
+
+      const element = (id) => document.getElementById(id);
+      const formatCompact = (value) =>
+        new Intl.NumberFormat("en", {
+          notation: "compact",
+          maximumFractionDigits: 1,
+        }).format(value);
+      const formatMoney = (value) =>
+        value == null
+          ? "—"
+          : new Intl.NumberFormat("en", {
+              style: "currency",
+              currency: "USD",
+              minimumFractionDigits: 3,
+              maximumFractionDigits: 3,
+            }).format(value);
+      const average = (values) =>
+        values.length
+          ? values.reduce((a, b) => a + b, 0) / values.length
+          : null;
+      const totalTokens = (row) =>
+        TOKEN_SERIES.reduce((sum, [, key]) => sum + (row[key] || 0), 0);
+      const runCost = (row) =>
+        row.native_cost_usd ?? row.estimated_cost_usd ?? null;
+      const FRONTIER_METRICS = {
+        cost: {
+          value: runCost,
+          format: formatMoney,
+          label: "AVERAGE COST / RUN (USD)",
+        },
+        tokens: {
+          value: totalTokens,
+          format: formatCompact,
+          label: "AVERAGE TOKENS / RUN",
+        },
+        runtime: {
+          value: (row) => row.duration_seconds ?? null,
+          format: (value) => `${value.toFixed(1)}s`,
+          label: "AVERAGE RUNTIME / RUN",
+        },
+      };
+
+      function completionRate(row) {
+        const checks = [
+          ...Object.values(row.public_test_results || {}),
+          ...Object.values(row.group_results || {}),
+        ];
+        return checks.length
+          ? checks.filter(Boolean).length / checks.length
+          : Number(row.passed);
       }
 
-      const pareto = paretoNames(stats);
-      const width = 1100, height = 350, left = 78, right = 1070, plotTop = 44, bottom = 292;
-      const maxValue = Math.max(.000001, ...stats.map(stat => stat.value));
-      const x = value => left + value / maxValue * (right - left);
-      const y = value => bottom - value * (bottom - plotTop);
-      const ticks = [0, .25, .5, .75, 1];
-      const grid = ticks.map(tick => `<line class="frontier-grid" x1="${left}" y1="${y(tick)}" x2="${right}" y2="${y(tick)}"/><text class="frontier-axis" x="${left - 12}" y="${y(tick) + 4}" text-anchor="end">${Math.round(tick * 100)}%</text>`).join("")
-        + ticks.map(tick => `<line class="frontier-grid" x1="${x(maxValue * tick)}" y1="${plotTop}" x2="${x(maxValue * tick)}" y2="${bottom}"/><text class="frontier-axis" x="${x(maxValue * tick)}" y="${bottom + 23}" text-anchor="middle">${metric.format(maxValue * tick)}</text>`).join("");
-      const frontierPoints = stats.filter(stat => pareto.has(stat.name)).sort((a, b) => a.value - b.value);
-      const line = frontierPoints.length > 1 ? `<polyline class="frontier-line" points="${frontierPoints.map(stat => `${x(stat.value)},${y(stat.quality)}`).join(" ")}"/>` : "";
-      const points = stats.map((stat, index) => {
-        const pointX = x(stat.value), pointY = y(stat.quality);
-        const label = stat.name.length > 28 ? `${stat.name.slice(0, 27)}…` : stat.name;
-        const detail = `${stat.name} · ${metric.format(stat.value)} · ${Math.round(stat.quality * 100)}% quality`;
-        return `<g class="frontier-mark" tabindex="0" aria-label="${escape(detail)}"><circle class="frontier-point ${pareto.has(stat.name) ? "pareto" : ""}" cx="${pointX}" cy="${pointY}" r="8" fill="${stat.color}"></circle><text class="frontier-index" x="${pointX}" y="${pointY}">${index + 1}</text><text class="frontier-point-label" x="${pointX}" y="${pointY + 26}" text-anchor="middle">${escape(label)}</text></g>`;
-      }).join("");
-      const legend = stats.map((stat, index) => `<div class="frontier-key"><i style="--point:${stat.color}"></i><span title="${escape(stat.name)}">${index + 1}. ${escape(stat.name)}</span><b>${metric.format(stat.value)} · ${Math.round(stat.quality * 100)}%${pareto.has(stat.name) ? " · frontier" : ""}</b></div>`).join("");
-      $("frontier").innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Quality frontier by ${frontierMetric}">${grid}${line}${points}<text class="frontier-axis" x="${(left + right) / 2}" y="${height - 8}" text-anchor="middle">${metric.label}</text><text class="frontier-axis" transform="translate(14 ${(plotTop + bottom) / 2}) rotate(-90)" text-anchor="middle">REQUIREMENT COMPLETION</text></svg><div class="frontier-legend">${legend}</div>`;
-
-      const marks = document.querySelectorAll(".frontier-mark");
-      const nextPositions = new Map(stats.map(stat => [stat.name, {x: x(stat.value), y: y(stat.quality)}]));
-      if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        const pointDuration = 1000;
-        marks.forEach((mark, index) => {
-          const current = nextPositions.get(stats[index].name);
-          const previous = frontierPositions.get(stats[index].name);
-          if (previous) mark.animate(
-            [{transform: `translate(${previous.x - current.x}px, ${previous.y - current.y}px)`}, {transform: "translate(0, 0)"}],
-            {duration: pointDuration, easing: "cubic-bezier(.22, 1, .36, 1)"}
-          );
-        });
-        $("frontier").querySelector(".frontier-line")?.animate(
-          [{clipPath: "inset(0 100% 0 0)"}, {clipPath: "inset(0 0 0 0)"}],
-          {duration: 880, delay: pointDuration * .7, easing: "cubic-bezier(.22, 1, .36, 1)", fill: "backwards"}
+      function escapeHtml(value) {
+        return String(value ?? "—").replace(
+          /[&<>"']/g,
+          (char) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[char],
         );
       }
-      frontierPositions = nextPositions;
 
-      const tooltip = $("frontier-tooltip");
-      const positionTooltip = (event, mark) => {
-        const rect = mark.getBoundingClientRect();
-        const pointerX = event?.clientX || rect.left + rect.width / 2;
-        const pointerY = event?.clientY || rect.top + rect.height / 2;
-        const gap = 14;
-        tooltip.style.left = `${Math.min(pointerX + gap, innerWidth - tooltip.offsetWidth - 12)}px`;
-        tooltip.style.top = `${Math.min(pointerY + gap, innerHeight - tooltip.offsetHeight - 12)}px`;
-      };
-      const hideTooltip = () => { tooltip.hidden = true; };
-      marks.forEach((mark, index) => {
-        const stat = stats[index];
-        const show = event => {
-          tooltip.innerHTML = `<div class="tooltip-kicker">Treatment</div><div class="tooltip-title">${escape(stat.name)}</div><div class="tooltip-grid"><span>Completion</span><b>${Math.round(stat.quality * 100)}%</b><span>Runs</span><b>${stat.passed} / ${stat.runs} passed</b><span>Average cost</span><b>${money(stat.cost)}</b><span>Average tokens</span><b>${compact(stat.tokens)}</b><span>Average runtime</span><b>${stat.runtime == null ? "—" : `${stat.runtime.toFixed(1)}s`}</b></div>`;
-          tooltip.hidden = false;
-          positionTooltip(event, mark);
-        };
-        mark.addEventListener("pointerenter", show);
-        mark.addEventListener("pointermove", event => positionTooltip(event, mark));
-        mark.addEventListener("pointerleave", hideTooltip);
-        mark.addEventListener("focus", show);
-        mark.addEventListener("blur", hideTooltip);
-      });
-    }
-
-    function render() {
-      if (!allRows.length) {
-        $("metrics").style.display = "none";
-        $("experiment").style.display = "none";
-        $("token-legend").innerHTML = "";
-        $("frontier").innerHTML = '<div class="empty">No runs yet — run the benchmark or open a results file</div>';
-        $("token-chart").innerHTML = '<div class="empty">No runs yet — run the benchmark or open a results file</div>';
-        $("runs").innerHTML = '<tr><td colspan="6" class="empty">No runs yet — run the benchmark or open a results file</td></tr>';
-        return;
+      function parseResultsJsonl(text) {
+        const rows = text
+          .split(/\r?\n/)
+          .filter((line) => line.trim())
+          .map((line, index) => {
+            try {
+              return JSON.parse(line);
+            } catch {
+              throw new Error(`Line ${index + 1} is not valid JSON`);
+            }
+          });
+        if (!rows.length) throw new Error("The file contains no runs");
+        if (
+          rows.some(
+            (row) =>
+              typeof row.task !== "string" ||
+              typeof row.configuration !== "string" ||
+              typeof row.passed !== "boolean",
+          )
+        )
+          throw new Error("This does not look like benchmark runs JSONL");
+        return rows;
       }
-      $("metrics").style.display = "";
-      $("experiment").style.display = "";
-      const selected = $("experiment").value;
-      const rows = allRows.filter(row => (row.experiment_id || "historical") === selected);
-      const groups = grouped(rows);
-      const passed = rows.filter(row => row.passed).length;
-      const totalTokens = rows.reduce((sum, row) => sum + tokens(row), 0);
-      const knownCosts = rows.map(cost).filter(value => value != null);
-      const avgDuration = rows.length ? rows.reduce((sum, row) => sum + (row.duration_seconds || 0), 0) / rows.length : 0;
-      const metrics = [
-        ["Pass rate", rows.length ? `${Math.round(passed / rows.length * 100)}%` : "—", `${passed} / ${rows.length} runs passed`],
-        ["Total tokens", compact(totalTokens), "All reported token classes"],
-        ["Average cost", knownCosts.length ? money(knownCosts.reduce((a, b) => a + b, 0) / knownCosts.length) : "—", `${knownCosts.length} / ${rows.length} priced runs`],
-        ["Average runtime", `${avgDuration.toFixed(1)}s`, "End-to-end duration"]
-      ];
-      $("metrics").innerHTML = metrics.map(([label, value, note]) => `<article class="card"><div class="metric-label">${label}</div><div class="metric-value">${value}</div><div class="metric-note">${note}</div></article>`).join("");
-      $("token-legend").innerHTML = tokenSeries.map(([label,, color]) => `<span><i class="swatch" style="--swatch:${color}"></i>${label}</span>`).join("");
 
-      const tokenStats = groups.map(([name, values]) => {
-        const averages = tokenSeries.map(([, key]) => values.reduce((sum, row) => sum + (row[key] || 0), 0) / values.length);
-        return {name, averages, total: averages.reduce((a, b) => a + b, 0)};
-      });
-      const maxTokens = Math.max(1, ...tokenStats.map(stat => stat.total));
-      $("token-chart").innerHTML = tokenStats.map(stat => {
-        const width = stat.total / maxTokens * 100;
-        const segments = stat.averages.map((value, index) => `<i class="segment" title="${tokenSeries[index][0]}: ${compact(value)}" style="--segment:${tokenSeries[index][2]};width:${stat.total ? value / stat.total * 100 : 0}%"></i>`).join("");
-        const details = stat.averages.map((value, index) => `<span>${tokenSeries[index][0]} <b>${compact(value)}</b></span>`).join("");
-        return `<div class="chart-row"><div class="chart-name" title="${escape(stat.name)}">${escape(stat.name)}</div><div class="track"><div class="stack" style="width:${width}%">${segments}</div></div><div class="chart-value">${compact(stat.total)}</div><div class="breakdown">${details}</div></div>`;
-      }).join("") || '<div class="empty">No token telemetry</div>';
+      function experimentIds(rows) {
+        return [
+          ...new Set(rows.map((row) => row.experiment_id || "historical")),
+        ];
+      }
 
-      renderFrontier(groups);
+      function setRows(rows) {
+        allRows = rows;
+        const ids = experimentIds(rows);
+        element("experiment").replaceChildren(
+          ...(ids.length
+            ? ids.map(
+                (id) =>
+                  new Option(id === "historical" ? "Historical runs" : id, id),
+              )
+            : [new Option("No results yet", "")]),
+        );
+        element("experiment").value = ids.at(-1) ?? "";
+        render();
+      }
 
-      const ledger = Object.values(rows.reduce((acc, row) => {
-        const key = `${row.configuration}\0${row.task}`;
-        (acc[key] ||= {task: row.task, configuration: row.configuration, values: []}).values.push(row);
-        return acc;
-      }, {})).sort((a, b) => a.configuration.localeCompare(b.configuration) || a.task.localeCompare(b.task));
-      $("runs").innerHTML = ledger.map(({task, configuration, values}) => {
-        const passed = values.filter(row => row.passed).length;
-        // ponytail: single-rep renders exactly as before; multi-rep averages into one row.
-        const status = values.length > 1 ? `${passed}/${values.length}` : passed ? "Passed" : "Failed";
-        const repCosts = values.map(cost).filter(value => value != null);
-        const avgTokens = values.reduce((sum, row) => sum + tokens(row), 0) / values.length;
-        const avgCost = repCosts.length ? repCosts.reduce((a, b) => a + b, 0) / repCosts.length : null;
-        const avgRuntime = values.reduce((sum, row) => sum + (row.duration_seconds || 0), 0) / values.length;
-        return `<tr><td><span class="status ${passed === values.length ? "pass" : ""}" title="${values.length} repetition${values.length === 1 ? "" : "s"}">${status}</span></td><td>${escape(task)}</td><td>${escape(configuration)}</td><td class="num" title="Average over ${values.length} run${values.length === 1 ? "" : "s"}">${compact(avgTokens)}</td><td class="num">${money(avgCost)}</td><td class="num">${avgRuntime.toFixed(1)}s</td></tr>`;
-      }).join("");
-    }
+      function groupByConfiguration(rows) {
+        return Object.entries(
+          rows.reduce((groups, row) => {
+            (groups[row.configuration] ||= []).push(row);
+            return groups;
+          }, {}),
+        ).sort(([a], [b]) => a.localeCompare(b));
+      }
 
-    async function load(file) {
-      try { setRows(parse(await file.text())); }
-      catch (error) { alert(error.message); }
-    }
+      function paretoConfigurations(stats) {
+        let best = -1;
+        const names = new Set();
+        for (const stat of [...stats].sort((a, b) => a.value - b.value)) {
+          if (stat.quality > best) {
+            names.add(stat.name);
+            best = stat.quality;
+          }
+        }
+        return names;
+      }
 
-    $("choose").addEventListener("click", () => $("file").click());
-    $("file").addEventListener("change", event => event.target.files[0] && load(event.target.files[0]));
-    $("experiment").addEventListener("change", render);
-    $("toggle-labels").addEventListener("click", event => {
-      showFrontierLabels = !showFrontierLabels;
-      event.currentTarget.setAttribute("aria-pressed", showFrontierLabels);
-      $("frontier").classList.toggle("labels-visible", showFrontierLabels);
-    });
-    document.querySelectorAll("[data-frontier]").forEach(button => button.addEventListener("click", () => {
-      frontierMetric = button.dataset.frontier;
-      document.querySelectorAll("[data-frontier]").forEach(option => option.setAttribute("aria-pressed", option === button));
-      render();
-    }));
-    console.assert(parse('{"task":"demo","configuration":"test","passed":true}').length === 1);
-    console.assert([...paretoNames([{name:"cheap", value:1, quality:.8}, {name:"expensive", value:2, quality:.8}])].join() === "cheap");
-    const saved = globalThis.BENCHMARK_RESULTS;
-    setRows(Array.isArray(saved) ? saved : []);
-  </script>
-</body>
+      function frontierStats(groups, metric) {
+        return groups
+          .map(([name, rows], index) => {
+            const measurements = rows
+              .map(metric.value)
+              .filter((value) => value != null);
+            const costs = rows.map(runCost).filter((value) => value != null);
+            const runtimes = rows
+              .map((row) => row.duration_seconds)
+              .filter((value) => value != null);
+
+            return {
+              name,
+              color: FRONTIER_COLORS[index % FRONTIER_COLORS.length],
+              value: average(measurements),
+              quality: average(rows.map(completionRate)),
+              runs: rows.length,
+              passed: rows.filter((row) => row.passed).length,
+              cost: average(costs),
+              tokens: average(rows.map(totalTokens)),
+              runtime: average(runtimes),
+            };
+          })
+          .filter((stat) => stat.value != null);
+      }
+
+      function frontierTooltipContent(stat) {
+        const runtime =
+          stat.runtime == null ? "—" : `${stat.runtime.toFixed(1)}s`;
+        return `
+          <div class="tooltip-kicker">Treatment</div>
+          <div class="tooltip-title">${escapeHtml(stat.name)}</div>
+          <div class="tooltip-grid">
+            <span>Completion</span><b>${Math.round(stat.quality * 100)}%</b>
+            <span>Runs</span><b>${stat.passed} / ${stat.runs} passed</b>
+            <span>Average cost</span><b>${formatMoney(stat.cost)}</b>
+            <span>Average tokens</span><b>${formatCompact(stat.tokens)}</b>
+            <span>Average runtime</span><b>${runtime}</b>
+          </div>`;
+      }
+
+      function renderFrontier(groups) {
+        element("frontier-tooltip").hidden = true;
+        const metric = FRONTIER_METRICS[frontierMetric];
+        const stats = frontierStats(groups, metric);
+        if (!stats.length) {
+          frontierPositions = new Map();
+          element("frontier").innerHTML =
+            `<div class="empty">No ${frontierMetric} telemetry</div>`;
+          return;
+        }
+
+        const pareto = paretoConfigurations(stats);
+        const width = 1100,
+          height = 350,
+          left = 78,
+          right = 1070,
+          plotTop = 44,
+          bottom = 292;
+        const maxValue = Math.max(0.000001, ...stats.map((stat) => stat.value));
+        const x = (value) => left + (value / maxValue) * (right - left);
+        const y = (value) => bottom - value * (bottom - plotTop);
+        const ticks = [0, 0.25, 0.5, 0.75, 1];
+        const grid =
+          ticks
+            .map(
+              (tick) =>
+                `<line class="frontier-grid" x1="${left}" y1="${y(tick)}" x2="${right}" y2="${y(tick)}"/><text class="frontier-axis" x="${left - 12}" y="${y(tick) + 4}" text-anchor="end">${Math.round(tick * 100)}%</text>`,
+            )
+            .join("") +
+          ticks
+            .map(
+              (tick) =>
+                `<line class="frontier-grid" x1="${x(maxValue * tick)}" y1="${plotTop}" x2="${x(maxValue * tick)}" y2="${bottom}"/><text class="frontier-axis" x="${x(maxValue * tick)}" y="${bottom + 23}" text-anchor="middle">${metric.format(maxValue * tick)}</text>`,
+            )
+            .join("");
+        const frontierPoints = stats
+          .filter((stat) => pareto.has(stat.name))
+          .sort((a, b) => a.value - b.value);
+        const line =
+          frontierPoints.length > 1
+            ? `<polyline class="frontier-line" points="${frontierPoints.map((stat) => `${x(stat.value)},${y(stat.quality)}`).join(" ")}"/>`
+            : "";
+        const points = stats
+          .map((stat, index) => {
+            const pointX = x(stat.value),
+              pointY = y(stat.quality);
+            const label =
+              stat.name.length > 28 ? `${stat.name.slice(0, 27)}…` : stat.name;
+            const detail = `${stat.name} · ${metric.format(stat.value)} · ${Math.round(stat.quality * 100)}% quality`;
+            return `<g class="frontier-mark" tabindex="0" aria-label="${escapeHtml(detail)}"><circle class="frontier-point ${pareto.has(stat.name) ? "pareto" : ""}" cx="${pointX}" cy="${pointY}" r="8" fill="${stat.color}"></circle><text class="frontier-index" x="${pointX}" y="${pointY}">${index + 1}</text><text class="frontier-point-label" x="${pointX}" y="${pointY + 26}" text-anchor="middle">${escapeHtml(label)}</text></g>`;
+          })
+          .join("");
+        const legend = stats
+          .map(
+            (stat, index) =>
+              `<div class="frontier-key"><i style="--point:${stat.color}"></i><span title="${escapeHtml(stat.name)}">${index + 1}. ${escapeHtml(stat.name)}</span><b>${metric.format(stat.value)} · ${Math.round(stat.quality * 100)}%${pareto.has(stat.name) ? " · frontier" : ""}</b></div>`,
+          )
+          .join("");
+        element("frontier").innerHTML =
+          `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Quality frontier by ${frontierMetric}">${grid}${line}${points}<text class="frontier-axis" x="${(left + right) / 2}" y="${height - 8}" text-anchor="middle">${metric.label}</text><text class="frontier-axis" transform="translate(14 ${(plotTop + bottom) / 2}) rotate(-90)" text-anchor="middle">REQUIREMENT COMPLETION</text></svg><div class="frontier-legend">${legend}</div>`;
+
+        const marks = document.querySelectorAll(".frontier-mark");
+        const nextPositions = new Map(
+          stats.map((stat) => [
+            stat.name,
+            { x: x(stat.value), y: y(stat.quality) },
+          ]),
+        );
+        if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          const pointDuration = 1000;
+          marks.forEach((mark, index) => {
+            const current = nextPositions.get(stats[index].name);
+            const previous = frontierPositions.get(stats[index].name);
+            if (previous)
+              mark.animate(
+                [
+                  {
+                    transform: `translate(${previous.x - current.x}px, ${previous.y - current.y}px)`,
+                  },
+                  { transform: "translate(0, 0)" },
+                ],
+                {
+                  duration: pointDuration,
+                  easing: "cubic-bezier(.22, 1, .36, 1)",
+                },
+              );
+          });
+          element("frontier")
+            .querySelector(".frontier-line")
+            ?.animate(
+              [
+                { clipPath: "inset(0 100% 0 0)" },
+                { clipPath: "inset(0 0 0 0)" },
+              ],
+              {
+                duration: 880,
+                delay: pointDuration * 0.7,
+                easing: "cubic-bezier(.22, 1, .36, 1)",
+                fill: "backwards",
+              },
+            );
+        }
+        frontierPositions = nextPositions;
+
+        const tooltip = element("frontier-tooltip");
+        const positionTooltip = (event, mark) => {
+          const rect = mark.getBoundingClientRect();
+          const pointerX = event?.clientX || rect.left + rect.width / 2;
+          const pointerY = event?.clientY || rect.top + rect.height / 2;
+          const gap = 14;
+          tooltip.style.left = `${Math.min(pointerX + gap, innerWidth - tooltip.offsetWidth - 12)}px`;
+          tooltip.style.top = `${Math.min(pointerY + gap, innerHeight - tooltip.offsetHeight - 12)}px`;
+        };
+        const hideTooltip = () => {
+          tooltip.hidden = true;
+        };
+        marks.forEach((mark, index) => {
+          const stat = stats[index];
+          const show = (event) => {
+            tooltip.innerHTML = frontierTooltipContent(stat);
+            tooltip.hidden = false;
+            positionTooltip(event, mark);
+          };
+          mark.addEventListener("pointerenter", show);
+          mark.addEventListener("pointermove", (event) =>
+            positionTooltip(event, mark),
+          );
+          mark.addEventListener("pointerleave", hideTooltip);
+          mark.addEventListener("focus", show);
+          mark.addEventListener("blur", hideTooltip);
+        });
+      }
+
+      function renderEmptyState() {
+        element("metrics").style.display = "none";
+        element("experiment").style.display = "none";
+        element("token-legend").innerHTML = "";
+        element("frontier").innerHTML =
+          `<div class="empty">${EMPTY_MESSAGE}</div>`;
+        element("token-chart").innerHTML =
+          `<div class="empty">${EMPTY_MESSAGE}</div>`;
+        element("runs").innerHTML =
+          `<tr><td colspan="6" class="empty">${EMPTY_MESSAGE}</td></tr>`;
+      }
+
+      function renderMetrics(rows) {
+        const passedRuns = rows.filter((row) => row.passed).length;
+        const tokenCount = rows.reduce((sum, row) => sum + totalTokens(row), 0);
+        const knownCosts = rows.map(runCost).filter((value) => value != null);
+        const durations = rows.map((row) => row.duration_seconds || 0);
+
+        const metrics = [
+          [
+            "Pass rate",
+            `${Math.round((passedRuns / rows.length) * 100)}%`,
+            `${passedRuns} / ${rows.length} runs passed`,
+          ],
+          [
+            "Total tokens",
+            formatCompact(tokenCount),
+            "All reported token classes",
+          ],
+          [
+            "Average cost",
+            formatMoney(average(knownCosts)),
+            `${knownCosts.length} / ${rows.length} priced runs`,
+          ],
+          [
+            "Average runtime",
+            `${average(durations).toFixed(1)}s`,
+            "End-to-end duration",
+          ],
+        ];
+
+        element("metrics").innerHTML = metrics
+          .map(
+            ([label, value, note]) => `
+              <article class="card">
+                <div class="metric-label">${label}</div>
+                <div class="metric-value">${value}</div>
+                <div class="metric-note">${note}</div>
+              </article>`,
+          )
+          .join("");
+      }
+
+      function renderTokenChart(groups) {
+        element("token-legend").innerHTML = TOKEN_SERIES.map(
+          ([label, , color]) =>
+            `<span><i class="swatch" style="--swatch:${color}"></i>${label}</span>`,
+        ).join("");
+
+        const stats = groups.map(([name, rows]) => {
+          const averages = TOKEN_SERIES.map(([, key]) =>
+            average(rows.map((row) => row[key] || 0)),
+          );
+          return { name, averages, total: average(rows.map(totalTokens)) };
+        });
+        const largestTotal = Math.max(1, ...stats.map((stat) => stat.total));
+
+        element("token-chart").innerHTML =
+          stats.map((stat) => renderTokenRow(stat, largestTotal)).join("") ||
+          '<div class="empty">No token telemetry</div>';
+      }
+
+      function renderTokenRow(stat, largestTotal) {
+        const barWidth = (stat.total / largestTotal) * 100;
+        const segments = stat.averages
+          .map((value, index) => {
+            const [label, , color] = TOKEN_SERIES[index];
+            const segmentWidth = stat.total ? (value / stat.total) * 100 : 0;
+            return `<i class="segment" title="${label}: ${formatCompact(value)}" style="--segment:${color};width:${segmentWidth}%"></i>`;
+          })
+          .join("");
+        const breakdown = stat.averages
+          .map(
+            (value, index) =>
+              `<span>${TOKEN_SERIES[index][0]} <b>${formatCompact(value)}</b></span>`,
+          )
+          .join("");
+
+        return `
+          <div class="chart-row">
+            <div class="chart-name" title="${escapeHtml(stat.name)}">${escapeHtml(stat.name)}</div>
+            <div class="track"><div class="stack" style="width:${barWidth}%">${segments}</div></div>
+            <div class="chart-value">${formatCompact(stat.total)}</div>
+            <div class="breakdown">${breakdown}</div>
+          </div>`;
+      }
+
+      function ledgerGroups(rows) {
+        const groups = rows.reduce((entries, row) => {
+          const key = `${row.configuration}\0${row.task}`;
+          (entries[key] ||= {
+            task: row.task,
+            configuration: row.configuration,
+            rows: [],
+          }).rows.push(row);
+          return entries;
+        }, {});
+
+        return Object.values(groups).sort(
+          (a, b) =>
+            a.configuration.localeCompare(b.configuration) ||
+            a.task.localeCompare(b.task),
+        );
+      }
+
+      function renderLedger(rows) {
+        element("runs").innerHTML = ledgerGroups(rows)
+          .map(({ task, configuration, rows: repetitions }) => {
+            const passed = repetitions.filter((row) => row.passed).length;
+            const status =
+              repetitions.length > 1
+                ? `${passed}/${repetitions.length}`
+                : passed
+                  ? "Passed"
+                  : "Failed";
+            const costs = repetitions
+              .map(runCost)
+              .filter((value) => value != null);
+            const repetitionLabel = `${repetitions.length} repetition${repetitions.length === 1 ? "" : "s"}`;
+            const runLabel = `${repetitions.length} run${repetitions.length === 1 ? "" : "s"}`;
+
+            return `
+              <tr>
+                <td><span class="status ${passed === repetitions.length ? "pass" : ""}" title="${repetitionLabel}">${status}</span></td>
+                <td>${escapeHtml(task)}</td>
+                <td>${escapeHtml(configuration)}</td>
+                <td class="num" title="Average over ${runLabel}">${formatCompact(average(repetitions.map(totalTokens)))}</td>
+                <td class="num">${formatMoney(average(costs))}</td>
+                <td class="num">${average(repetitions.map((row) => row.duration_seconds || 0)).toFixed(1)}s</td>
+              </tr>`;
+          })
+          .join("");
+      }
+
+      function render() {
+        if (!allRows.length) {
+          renderEmptyState();
+          return;
+        }
+
+        element("metrics").style.display = "";
+        element("experiment").style.display = "";
+
+        const selectedExperiment = element("experiment").value;
+        const rows = allRows.filter(
+          (row) => (row.experiment_id || "historical") === selectedExperiment,
+        );
+        const configurationGroups = groupByConfiguration(rows);
+
+        renderMetrics(rows);
+        renderFrontier(configurationGroups);
+        renderTokenChart(configurationGroups);
+        renderLedger(rows);
+      }
+
+      async function loadResultsFile(file) {
+        try {
+          setRows(parseResultsJsonl(await file.text()));
+        } catch (error) {
+          alert(error.message);
+        }
+      }
+
+      function bindControls() {
+        element("choose").addEventListener("click", () =>
+          element("file").click(),
+        );
+        element("file").addEventListener("change", (event) => {
+          const [file] = event.target.files;
+          if (file) loadResultsFile(file);
+        });
+        element("experiment").addEventListener("change", render);
+        element("toggle-labels").addEventListener("click", (event) => {
+          showFrontierLabels = !showFrontierLabels;
+          event.currentTarget.setAttribute("aria-pressed", showFrontierLabels);
+          element("frontier").classList.toggle(
+            "labels-visible",
+            showFrontierLabels,
+          );
+        });
+        document.querySelectorAll("[data-frontier]").forEach((button) => {
+          button.addEventListener("click", () => {
+            frontierMetric = button.dataset.frontier;
+            document
+              .querySelectorAll("[data-frontier]")
+              .forEach((option) =>
+                option.setAttribute("aria-pressed", option === button),
+              );
+            render();
+          });
+        });
+      }
+
+      bindControls();
+      setRows(
+        Array.isArray(globalThis.BENCHMARK_RESULTS)
+          ? globalThis.BENCHMARK_RESULTS
+          : [],
+      );
+    </script>
+  </body>
 </html>
