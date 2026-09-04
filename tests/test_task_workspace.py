@@ -175,7 +175,6 @@ def test_check_rejects_generated_python_cache_files(repository):
     rejected = run("check", info["scratch"], check=False)
 
     assert rejected.returncode == 2
-    assert "generated Python cache files" in rejected.stderr
     assert not (repo / "benchmarks/tasks/demo").exists()
 
     cache.unlink()

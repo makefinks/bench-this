@@ -110,10 +110,10 @@ external-target orchestrator only. Use this default unless the user requests one
 alternatives. Use the exact requested model in an alternative mode. Orchestrator and treatment
 settings remain independent.
 
-For the default, confirm `opencode auth list` reports an OpenAI OAuth credential. Launch OpenCode
+For the default, confirm `opencode2 auth list` reports an OpenAI OAuth credential. Launch OpenCode
 with `OPENAI_API_KEY` unset so it cannot select API-key authentication.
 
-For OpenCode with GitHub Copilot, confirm `opencode auth list` reports a GitHub Copilot OAuth
+For OpenCode with GitHub Copilot, confirm `opencode2 auth list` reports a GitHub Copilot OAuth
 credential and use `github-copilot/<requested-model>`. Confirm Copilot Business status before using
 a Business endpoint; an auth-profile name is not evidence of the subscription.
 
@@ -183,10 +183,14 @@ separately.
 
 ### Background checkpoint loop
 
-When the execution environment supports background tasks, submit each `opencode run` command below
-as one background task with a pseudo-terminal. OpenCode may remain at `init` without a terminal even
-when stdout and stderr are redirected. Keep the returned task handle and leave the OpenCode process
-attached to that task. Use a foreground terminal only when background execution is unavailable.
+When the execution environment supports background tasks, submit each `opencode2 run` command below
+as one background task. Request a pseudo-terminal when the background tool supports one; use a
+foreground terminal only when background execution is unavailable. Keep the returned task handle
+and leave the OpenCode process attached to it.
+
+Follow the background tool's monitoring contract. When it promises automatic completion
+notifications and prohibits polling, wait for its notification and inspect state when notified or
+when the user explicitly asks for status. Otherwise use the checkpoint loop below.
 
 After launching the task, run this wait as a separate Bash call. The interval depends on the target:
 `sleep 30` for the internal full-flow fixture, `sleep 120` for an external target:
@@ -213,20 +217,19 @@ background task and restarting the same checkpoint loop. All prompts remain sepa
 OpenCode session.
 
 
-For the default orchestrator:
+For the default orchestrator, encode the reasoning variant in the qualified V2 model selector:
 
 ```bash
-orchestrator_model="openai/gpt-5.6-luna"
+orchestrator_model="openai/gpt-5.6-luna#high"
 
 (
   cd "$repository_dir"
-  env -u OPENAI_API_KEY opencode run \
+  env -u OPENAI_API_KEY opencode2 run \
     --model "$orchestrator_model" \
-    --variant high \
     --agent build \
     --format json \
     --print-logs \
-    --log-level INFO \
+    --log-level info \
     --auto \
     'Use the bench-this skill to recommend 1 benchmark candidate.' \
     >"$log_dir/orchestrator.jsonl" 2>"$log_dir/opencode.log"
@@ -239,14 +242,13 @@ same session:
 ```bash
 (
   cd "$repository_dir"
-  env -u OPENAI_API_KEY opencode run \
+  env -u OPENAI_API_KEY opencode2 run \
     --session <orchestrator-session-id> \
     --model "$orchestrator_model" \
-    --variant high \
     --agent build \
     --format json \
     --print-logs \
-    --log-level INFO \
+    --log-level info \
     --auto \
     'I accept the recommended candidates.' \
     >"$log_dir/creation.jsonl" 2>>"$log_dir/opencode.log"
@@ -258,14 +260,13 @@ After the orchestrator reports task creation and validation, resume once more:
 ```bash
 (
   cd "$repository_dir"
-  env -u OPENAI_API_KEY opencode run \
+  env -u OPENAI_API_KEY opencode2 run \
     --session <orchestrator-session-id> \
     --model "$orchestrator_model" \
-    --variant high \
     --agent build \
     --format json \
     --print-logs \
-    --log-level INFO \
+    --log-level info \
     --auto \
     'Create a benchmark configuration for this treatment: <treatment-request>.' \
     >"$log_dir/configuration.jsonl" 2>>"$log_dir/opencode.log"
@@ -277,14 +278,13 @@ When treatment execution is authorized, resume the same session after configurat
 ```bash
 (
   cd "$repository_dir"
-  env -u OPENAI_API_KEY opencode run \
+  env -u OPENAI_API_KEY opencode2 run \
     --session <orchestrator-session-id> \
     --model "$orchestrator_model" \
-    --variant high \
     --agent build \
     --format json \
     --print-logs \
-    --log-level INFO \
+    --log-level info \
     --auto \
     'Verify authentication and run each requested treatment once against one validated task. Inspect the normalized result and telemetry, then report the evidence. Do not create or replace credentials.' \
     >"$log_dir/execution.jsonl" 2>>"$log_dir/opencode.log"
@@ -292,7 +292,7 @@ When treatment execution is authorized, resume the same session after configurat
 ```
 
 For an explicitly requested non-OpenAI orchestrator, replace `orchestrator_model` and omit
-`env -u OPENAI_API_KEY`. Remove `--variant high` unless the selected mode supports and requests that
+`env -u OPENAI_API_KEY`. Append `#<variant>` only when the selected mode supports and requests that
 variant. Use `opencode-go/glm-5.2` for an explicitly requested OpenCode Go orchestrator.
 
 The OpenCode run is complete when all required prompts finish in the same recorded session and all
@@ -407,18 +407,19 @@ progress for the chosen timeout and the background task remains running.
 Find OpenCode's log directory with:
 
 ```bash
-opencode debug paths
+opencode2 debug paths
 ```
 
 The terms `parent` and `child` below describe OpenCode's internal Task sessions. They do not
 describe benchmark treatments.
 
-The Task tool creates a child session with a `parentID`. The global log records the child session ID
-and later steps. Inspect either transcript with:
+The Task tool creates a child session with a `parentID`. Find active sessions, inspect a candidate
+child's metadata, and export either transcript with:
 
 ```bash
-opencode export <session-id> --sanitize
-opencode session list --format json
+opencode2 api get /api/session/active
+opencode2 api get /api/session/<session-id>
+opencode2 export <session-id> --sanitize
 ```
 
 Preserve the parent and child session IDs, background-task handle, JSON stream, OpenCode log, and
@@ -428,6 +429,42 @@ diagnosis.
 Native Copilot has no OpenCode parent-child session model. Diagnose it from `copilot.log`, JSON
 streams, and repository changes. A quiet stream alone is not a stall; allow several minutes for
 exploration and dependency analysis.
+
+### Recover interrupted OpenCode stages
+
+Treat a transport error or server restart as an interruption, not proof that the stage failed.
+Before resuming, export the affected parent or child session and inspect its JSON stream, generated
+files, receipts, and run logs. Resume from the first unmet completion criterion; preserve successful
+checks and accepted artifacts.
+
+When a terminated CLI leaves a session marked `running`, distinguish stale execution from a pending
+permission or queued prompt:
+
+```bash
+opencode2 api get /api/session/active
+opencode2 api get /api/session/<session-id>/permission
+opencode2 api get /api/session/<session-id>/inbox
+```
+
+An empty permission list rules out an approval wait. If the session has made no progress across
+multiple checkpoints and its CLI is gone or being replaced, interrupt only that stale session:
+
+```bash
+opencode2 api post /api/session/<session-id>/interrupt
+```
+
+Delete an inbox item only when it is a duplicate recovery prompt you submitted and can identify
+exactly:
+
+```bash
+opencode2 api delete /api/session/<session-id>/inbox/<inbox-id>
+```
+
+Resume the same parent or child session with a short recovery prompt that names completed evidence
+and the next unmet criterion. Write recovery turns to new JSON files such as
+`creation-resume-1.jsonl`; retain the interrupted logs. A completed child can be resumed solely to
+return its required report, after which the parent resumes at verification or integration without
+repeating child work.
 
 ## Verify completion
 

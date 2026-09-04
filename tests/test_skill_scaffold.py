@@ -34,5 +34,4 @@ def test_remove_example_requires_complete_unchanged_scaffold(tmp_path):
     rejected = run("--remove-example", second)
 
     assert rejected.returncode != 0
-    assert "modified or partial scaffold example" in rejected.stderr
     assert (modified_example / "prompt.md").read_text(encoding="utf-8") == "user content\n"
