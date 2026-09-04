@@ -153,6 +153,24 @@ The `auth_profile` values `openai`, `opencode-go`, and `opencode-zen` are local 
 `~/.agent-bench/auth/`. They happen to match the provider IDs in these examples, but profile labels
 do not select a provider. The `provider` field and matching `auth login --provider` argument do.
 
+For OpenRouter, preserve the complete pinned provider/model ID:
+
+```yaml
+id: opencode-openrouter-claude-sonnet
+harness: opencode
+provider: openrouter
+model: anthropic/claude-sonnet-4.6
+agent: build
+harness_config: harness
+workspace_config: workspace
+auth_profile: openrouter
+arguments: []
+```
+
+The OpenRouter profile is provider-scoped. Its key is injected as `OPENROUTER_API_KEY` and never
+written to the treatment or disposable OpenCode home. OpenRouter default routing may select
+different upstream deployments or fallbacks.
+
 For Amazon Bedrock with a runner-managed bearer API key, use:
 
 ```yaml
@@ -219,6 +237,8 @@ python <skill-directory>/scripts/scaffold.py .
 ./benchmarks/run.py validate-task duplicate-email
 ./benchmarks/run.py auth set-key --provider amazon-bedrock \
   --profile bedrock --api-key 'YOUR_API_KEY'
+./benchmarks/run.py auth set-key --provider openrouter \
+  --profile openrouter --api-key 'YOUR_API_KEY'
 ./benchmarks/run.py auth login --harness copilot --profile copilot
 ./benchmarks/run.py auth login --harness opencode --provider github-copilot --profile copilot
 ./benchmarks/run.py auth login --harness opencode --provider openai --profile openai

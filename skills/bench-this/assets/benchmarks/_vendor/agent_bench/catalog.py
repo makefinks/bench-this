@@ -187,6 +187,12 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
                     "openai": _provider(
                         "openai", AuthPolicy.OPENCODE_PROVIDER, "openai"
                     ),
+                    "openrouter": _provider(
+                        "openrouter",
+                        AuthPolicy.SHARED_API_KEY,
+                        "openrouter",
+                        api_key_environment="OPENROUTER_API_KEY",
+                    ),
                     "opencode": _provider(
                         "opencode", AuthPolicy.OPENCODE_PROVIDER, "opencode"
                     ),

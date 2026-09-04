@@ -61,6 +61,29 @@ def test_opencode_identity_requires_provider_and_model(tmp_path):
         adapter.verify_identity('{"providerID":"openai","modelID":"gpt-fixed"}')
 
 
+def test_opencode_openrouter_command_and_identity_use_pinned_provider_model(tmp_path):
+    value = TreatmentConfig(
+        **{
+            **config(tmp_path, "opencode").__dict__,
+            "provider": "openrouter",
+            "model": "anthropic/claude-sonnet-4.6",
+        }
+    )
+    adapter = OpenCodeAdapter(value)
+
+    command = adapter.command("fix it")
+    assert command[command.index("--model") + 1] == (
+        "openrouter/anthropic/claude-sonnet-4.6"
+    )
+    adapter.verify_identity(
+        '{"providerID":"openrouter","modelID":"anthropic/claude-sonnet-4.6"}'
+    )
+    with pytest.raises(IdentityMismatch):
+        adapter.verify_identity(
+            '{"providerID":"openrouter","modelID":"anthropic/claude-sonnet-4"}'
+        )
+
+
 def test_opencode_preflight_enables_identity_logs(tmp_path):
     command = OpenCodeAdapter(config(tmp_path, "opencode")).preflight_command()
     assert "--print-logs" in command

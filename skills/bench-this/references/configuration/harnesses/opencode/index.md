@@ -57,8 +57,8 @@ Authenticate and verify the matching provider and profile:
 
 ## Authentication
 
-OpenCode providers other than Amazon Bedrock use the provider's normal OpenCode login. For manual
-setup, give the user the runner command with the exact provider and profile:
+OpenCode providers other than Amazon Bedrock and OpenRouter use the provider's normal OpenCode
+login. For manual setup, give the user the runner command with the exact provider and profile:
 
 ```bash
 ./benchmarks/run.py auth login --harness opencode --provider openai \

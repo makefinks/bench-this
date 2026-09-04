@@ -121,6 +121,32 @@ def test_creates_opencode_zen_configuration(tmp_path: Path) -> None:
     assert config["enabled_providers"] == ["opencode"]
 
 
+def test_creates_openrouter_configuration_with_provider_model_id(tmp_path: Path) -> None:
+    repository = scaffold(tmp_path)
+
+    result = run_configure(
+        repository,
+        "--provider",
+        "openrouter",
+        "--model",
+        "anthropic/claude-sonnet-4.6",
+        "--auth-profile",
+        "openrouter",
+    )
+
+    assert result.returncode == 0, result.stderr
+    root = (
+        repository
+        / "benchmarks/configurations/opencode-openrouter-anthropic-claude-sonnet-4-6"
+    )
+    runtime = load_configuration(root / "configuration.yaml")
+    assert runtime.qualified_model == "openrouter/anthropic/claude-sonnet-4.6"
+    native = json.loads((root / "harness/opencode.json").read_text())
+    assert native["enabled_providers"] == ["openrouter"]
+    assert native["small_model"] == runtime.qualified_model
+    assert "provider" not in native
+
+
 def test_creates_amazon_bedrock_configuration(tmp_path: Path) -> None:
     repository = scaffold(tmp_path)
 

@@ -25,6 +25,7 @@ def test_catalog_declares_complete_supported_matrix():
         ("opencode", "amazon-bedrock"),
         ("opencode", "github-copilot"),
         ("opencode", "openai"),
+        ("opencode", "openrouter"),
         ("opencode", "opencode"),
         ("opencode", "opencode-go"),
         ("omp", "amazon-bedrock"),
@@ -43,6 +44,17 @@ def test_pi_github_copilot_reuses_oauth_and_requires_a_pinned_model():
     assert provider.auth_policy is AuthPolicy.PI_OAUTH
     assert provider.pricing_provider == "github-copilot"
     assert not provider.allow_automatic_model
+
+
+def test_opencode_openrouter_catalog_uses_shared_key_and_pricing_identity():
+    harness, provider = resolve_selection("opencode", "openrouter")
+
+    assert harness.model_reference is ModelReferenceForm.QUALIFIED
+    assert provider.auth_policy is AuthPolicy.SHARED_API_KEY
+    assert provider.api_key_environment == "OPENROUTER_API_KEY"
+    assert provider.pricing_provider == "openrouter"
+    assert not provider.allow_automatic_model
+    assert provider.allowed_fields == provider.required_fields == frozenset()
 
 
 def test_bedrock_declares_shared_api_key_environment_per_harness():

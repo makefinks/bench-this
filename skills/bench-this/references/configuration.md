@@ -18,6 +18,7 @@ page for that combination:
 | OpenCode    | openai, opencode-go          | [OpenCode](configuration/harnesses/opencode/index.md)                                                                                             |
 | OpenCode    | opencode (Zen)               | [OpenCode Zen](configuration/harnesses/opencode/index.md#opencode-zen)                                                                            |
 | OpenCode    | amazon-bedrock               | [OpenCode](configuration/harnesses/opencode/index.md) and [Amazon Bedrock](configuration/harnesses/opencode/providers/amazon-bedrock.md)          |
+| OpenCode    | openrouter                   | [OpenCode](configuration/harnesses/opencode/index.md) and [OpenRouter](configuration/harnesses/opencode/providers/openrouter.md)                  |
 | OpenCode    | github-copilot               | [OpenCode](configuration/harnesses/opencode/index.md) and [GitHub Copilot](configuration/harnesses/opencode/providers/github-copilot.md)          |
 | Copilot CLI | none                         | [Copilot CLI](configuration/harnesses/copilot-cli/index.md)                                                                                       |
 | Copilot CLI | amazon-bedrock               | [Copilot CLI](configuration/harnesses/copilot-cli/index.md) and [Amazon Bedrock](configuration/harnesses/copilot-cli/providers/amazon-bedrock.md) |

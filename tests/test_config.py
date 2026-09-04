@@ -316,6 +316,29 @@ auth_profile: openai
     assert load_configuration(path).provider == "openai"
 
 
+def test_schema_accepts_openrouter_provider_model_id(tmp_path):
+    root = tmp_path / "opencode-openrouter"
+    (root / "harness").mkdir(parents=True)
+    (root / "workspace").mkdir()
+    path = write(
+        root / "configuration.yaml",
+        """id: opencode-openrouter
+harness: opencode
+provider: openrouter
+model: anthropic/claude-sonnet-4.6
+agent: build
+harness_config: harness
+workspace_config: workspace
+auth_profile: openrouter
+""",
+    )
+
+    config = load_configuration(path)
+
+    assert config.model == "anthropic/claude-sonnet-4.6"
+    assert config.qualified_model == "openrouter/anthropic/claude-sonnet-4.6"
+
+
 def test_schema_accepts_opencode_go_provider(tmp_path):
     root = tmp_path / "opencode-go"
     (root / "harness").mkdir(parents=True)
@@ -634,6 +657,13 @@ model: auto""",
             "openai-auto",
             """harness: opencode
 provider: openai
+model: auto
+agent: build""",
+        ),
+        (
+            "openrouter-auto",
+            """harness: opencode
+provider: openrouter
 model: auto
 agent: build""",
         ),

@@ -20,12 +20,12 @@ npx skills add makefinks/bench-this
 
 `bench-this` supports these harness and provider combinations:
 
-| Harness            | GitHub Copilot (`github-copilot`) | OpenAI Codex (`openai-codex`) | OpenCode Zen (`opencode`) | OpenCode Go (`opencode-go`) | Amazon Bedrock (`amazon-bedrock`) |
-| ------------------ | --------------------------------- | ----------------------------- | ------------------------- | --------------------------- | --------------------------------- |
-| Native Copilot CLI | ✓                                 |                               |                           |                             | ✓                                 |
-| OpenCode           | ✓                                 | ✓                             | ✓                         | ✓                           | ✓                                 |
-| Oh My Pi           | ✓                                 | ✓                             |                           |                             | ✓                                 |
-| Pi                 | ✓                                 | ✓                             |                           |                             | ✓                                 |
+| Harness            | GitHub Copilot (`github-copilot`) | OpenAI Codex (`openai-codex`) | OpenCode Zen (`opencode`) | OpenCode Go (`opencode-go`) | Amazon Bedrock (`amazon-bedrock`) | OpenRouter (`openrouter`) |
+| ------------------ | --------------------------------- | ----------------------------- | ------------------------- | --------------------------- | --------------------------------- | ------------------------- |
+| Native Copilot CLI | ✓                                 |                               |                           |                             | ✓                                 |                           |
+| OpenCode           | ✓                                 | ✓                             | ✓                         | ✓                           | ✓                                 | ✓                         |
+| Oh My Pi           | ✓                                 | ✓                             |                           |                             | ✓                                 |                           |
+| Pi                 | ✓                                 | ✓                             |                           |                             | ✓                                 |                           |
 
 See [configuration.md](skills/bench-this/references/configuration.md) for setup commands and
 reproducibility rules. Contributions that add another harness or provider are greatly appreciated.

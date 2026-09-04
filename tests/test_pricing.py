@@ -163,6 +163,28 @@ def test_estimate_falls_back_to_models_dev(tmp_path):
     assert runner._estimate(config(tmp_path), usage) == pytest.approx(13.9)
 
 
+def test_openrouter_pricing_uses_catalog_identity_and_raw_model_id(tmp_path):
+    class Pricing:
+        def price(self, provider, model):
+            assert (provider, model) == (
+                "openrouter",
+                "anthropic/claude-sonnet-4.6",
+            )
+            return ModelPrice(1, 2)
+
+    openrouter = TreatmentConfig(
+        **{
+            **config(tmp_path).__dict__,
+            "provider": "openrouter",
+            "model": "anthropic/claude-sonnet-4.6",
+        }
+    )
+
+    assert BenchmarkRunner(project(tmp_path), pricing=Pricing())._estimate(
+        openrouter, Usage(input_tokens=1_000_000)
+    ) == 1
+
+
 def test_native_copilot_uses_github_copilot_estimate(tmp_path):
     class Pricing:
         def price(self, provider, model):

@@ -154,6 +154,31 @@ def test_one_bedrock_provider_profile_injects_key_for_every_harness_without_stag
     assert not (prepared.home / PROVIDER_CREDENTIALS_FILE).exists()
 
 
+def test_opencode_openrouter_auth_injects_shared_key_without_staging(tmp_path):
+    auth_root = tmp_path / "auth"
+    profile = set_provider_api_key(
+        "openrouter", "openrouter", "fixture-token", auth_root
+    )
+    config = TreatmentConfig(
+        **{
+            **bedrock_config(tmp_path).__dict__,
+            "id": "openrouter",
+            "provider": "openrouter",
+            "model": "anthropic/claude-sonnet-4.6",
+            "region": None,
+            "auth_profile": "openrouter",
+        }
+    )
+
+    prepared = prepare_home(config, tmp_path / "opencode-home", auth_root)
+
+    assert prepared.profile == profile
+    assert dict(prepared.secret_environment) == {
+        "OPENROUTER_API_KEY": "fixture-token"
+    }
+    assert list(prepared.home.rglob(PROVIDER_CREDENTIALS_FILE.name)) == []
+
+
 def test_bedrock_provider_profile_rejects_broadened_or_invalid_credentials(tmp_path):
     auth_root = tmp_path / "auth"
     profile = provider_auth_profile_root(

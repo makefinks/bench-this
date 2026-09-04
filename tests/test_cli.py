@@ -8,8 +8,9 @@ from agent_bench.auth import PROVIDER_CREDENTIALS_FILE
 from agent_bench.models import RunResult
 
 
+@pytest.mark.parametrize("provider", ["amazon-bedrock", "openrouter"])
 def test_auth_set_key_works_without_project_and_atomically_replaces_key(
-    tmp_path, monkeypatch, capsys
+    tmp_path, monkeypatch, capsys, provider
 ):
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))
@@ -22,7 +23,7 @@ def test_auth_set_key_works_without_project_and_atomically_replaces_key(
         "auth",
         "set-key",
         "--provider",
-        "amazon-bedrock",
+        provider,
         "--profile",
         "shared",
         "--api-key",
@@ -34,7 +35,7 @@ def test_auth_set_key_works_without_project_and_atomically_replaces_key(
     captured = capsys.readouterr()
     assert "first-secret" not in captured.out + captured.err
     assert "replacement-secret" not in captured.out + captured.err
-    profile = home / ".agent-bench/auth/shared/providers/amazon-bedrock"
+    profile = home / f".agent-bench/auth/shared/providers/{provider}"
     credential = profile / PROVIDER_CREDENTIALS_FILE
     assert json.loads(credential.read_text(encoding="utf-8")) == {
         "api_key": "replacement-secret"
