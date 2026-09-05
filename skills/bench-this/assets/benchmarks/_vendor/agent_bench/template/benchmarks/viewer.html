@@ -414,8 +414,17 @@
         opacity: 0;
         pointer-events: none;
       }
+      .frontier-label-link {
+        stroke: var(--muted);
+        stroke-width: 0.75;
+        opacity: 0;
+        pointer-events: none;
+      }
       .frontier.labels-visible .frontier-point-label {
         opacity: 1;
+      }
+      .frontier.labels-visible .frontier-label-link {
+        opacity: 0.4;
       }
       .frontier-tooltip {
         position: fixed;
@@ -1013,6 +1022,8 @@
 
             return {
               name,
+              configuration: rows[0].configuration,
+              experiment: experimentLabel(experimentId(rows[0])),
               color: FRONTIER_COLORS[index % FRONTIER_COLORS.length],
               value: average(measurements),
               quality: average(rows.map(completionRate)),
@@ -1033,7 +1044,8 @@
         const turns = stat.turns == null ? "—" : `${stat.turns.toFixed(1)}`;
         return `
           <div class="tooltip-kicker">Treatment</div>
-          <div class="tooltip-title">${escapeHtml(stat.name)}</div>
+          <div class="tooltip-title">${escapeHtml(stat.configuration)}</div>
+          <div class="tooltip-title">${escapeHtml(stat.experiment)}</div>
           <div class="tooltip-grid">
             <span>Completion</span><b>${Math.round(stat.quality * 100)}%</b>
             <span>Runs</span><b>${stat.passed} / ${stat.runs} passed</b>
@@ -1042,6 +1054,153 @@
             <span>Average runtime</span><b>${runtime}</b>
             <span>Average turns</span><b>${turns}</b>
           </div>`;
+      }
+
+      // Work in SVG units so placement remains valid when the chart scales.
+      // Null placements deliberately fall back to the numbered legend/tooltips.
+      function placeFrontierLabels(labels, points, bounds, frontier = []) {
+        const overlaps = (a, b) =>
+          a.x < b.x + b.width && a.x + a.width > b.x &&
+          a.y < b.y + b.height && a.y + a.height > b.y;
+        // Clip each frontier segment against the padded label rectangle.
+        const crossesFrontier = (box) => frontier.slice(1).some((end, index) => {
+          const start = frontier[index];
+          let enter = 0, exit = 1;
+          for (const [axis, size] of [["x", "width"], ["y", "height"]]) {
+            const delta = end[axis] - start[axis];
+            const low = box[axis] - 2, high = box[axis] + box[size] + 2;
+            if (delta === 0) {
+              if (start[axis] < low || start[axis] > high) return false;
+            } else {
+              const a = (low - start[axis]) / delta;
+              const b = (high - start[axis]) / delta;
+              enter = Math.max(enter, Math.min(a, b));
+              exit = Math.min(exit, Math.max(a, b));
+            }
+          }
+          return enter <= exit;
+        });
+        const occupied = points.map((point) => ({
+          x: point.x - 12, y: point.y - 12, width: 24, height: 24,
+        }));
+        return labels.map((label, index) => {
+          const point = points[index];
+          // Include the text halo and a gutter in collision checks.
+          const width = label.width + 8, height = label.height + 8;
+          const candidates = [];
+          const add = (x, y) => {
+            candidates.push({
+              x: Math.max(bounds.left, Math.min(x, bounds.right - width)),
+              y: Math.max(bounds.top, Math.min(y, bounds.bottom - height)),
+              width, height,
+            });
+          };
+          if (width > bounds.right - bounds.left || height > bounds.bottom - bounds.top)
+            return null;
+          for (const distance of [16, 32, 48]) {
+            add(point.x - width / 2, point.y + distance);
+            add(point.x - width / 2, point.y - distance - height);
+            add(point.x + distance, point.y - height / 2);
+            add(point.x - distance - width, point.y - height / 2);
+          }
+          // Search spare plot space when a cluster exhausts nearby positions.
+          for (let y = bounds.top; y <= bounds.bottom - height; y += height)
+            for (let x = bounds.left; x <= bounds.right - width; x += 16)
+              add(x, y);
+          const distance = (box) => Math.hypot(
+            Math.max(box.x - point.x, 0, point.x - box.x - width),
+            Math.max(box.y - point.y, 0, point.y - box.y - height),
+          );
+          // Prefer a clear nearby position below the point over a slightly
+          // closer grid-search position; distance still limits displacement.
+          const score = (box) => distance(box) + (box.y >= point.y ? 0 : 12);
+          candidates.sort((a, b) => score(a) - score(b));
+          const box = candidates.find((candidate) =>
+            !occupied.some((other) => overlaps(candidate, other)) &&
+            !crossesFrontier(candidate),
+          );
+          if (!box) return null;
+          occupied.push(box);
+          return box;
+        });
+      }
+
+      function layoutFrontierLabels(svg, points, bounds, frontier = []) {
+        const labels = [...svg.querySelectorAll(".frontier-point-label")];
+        const sizes = labels.map((label) => label.getBBox());
+        const placements = placeFrontierLabels(sizes, points, bounds, frontier);
+        const links = svg.querySelectorAll(".frontier-label-link");
+        labels.forEach((label, index) => {
+          const box = placements[index];
+          label.style.display = box ? "" : "none";
+          if (!box) return;
+          label.setAttribute("transform", `translate(${box.x + 4 - sizes[index].x} ${box.y + 4 - sizes[index].y})`);
+          const point = points[index];
+          const endX = Math.max(box.x, Math.min(point.x, box.x + box.width));
+          const endY = Math.max(box.y, Math.min(point.y, box.y + box.height));
+          const distance = Math.hypot(endX - point.x, endY - point.y);
+          if (distance > 0) {
+            const link = links[index];
+            link.setAttribute("x1", point.x + (endX - point.x) * 12 / distance);
+            link.setAttribute("y1", point.y + (endY - point.y) * 12 / distance);
+            link.setAttribute("x2", endX);
+            link.setAttribute("y2", endY);
+            link.style.display = "";
+          }
+        });
+      }
+
+      const FRONTIER_MOTION = {
+        duration: 1000,
+        easing: "cubic-bezier(.22, 1, .36, 1)",
+      };
+      const connectorCoordinates = (link) =>
+        ["x1", "y1", "x2", "y2"].map((key) => Number(link.getAttribute(key)));
+
+      function captureFrontierLabels(svg) {
+        if (!svg) return new Map();
+        const links = svg.querySelectorAll(".frontier-label-link");
+        return new Map([...svg.querySelectorAll(".frontier-point-label")].map((label, index) => [
+          label.dataset.key,
+          {
+            visible: label.style.display !== "none",
+            transform: getComputedStyle(label).transform,
+            connector: connectorCoordinates(links[index]),
+          },
+        ]));
+      }
+
+      function animateFrontierLabels(svg, previous) {
+        const links = svg.querySelectorAll(".frontier-label-link");
+        svg.querySelectorAll(".frontier-point-label").forEach((label, index) => {
+          const old = previous.get(label.dataset.key);
+          if (!old?.visible || label.style.display === "none") return;
+          const animation = label.animate([
+            { transform: old.transform },
+            { transform: getComputedStyle(label).transform },
+          ], FRONTIER_MOTION);
+          const link = links[index];
+          const target = connectorCoordinates(link);
+          const update = (progress) => {
+            ["x1", "y1", "x2", "y2"].forEach((key, coordinate) => {
+              link.setAttribute(key, old.connector[coordinate] +
+                (target[coordinate] - old.connector[coordinate]) * progress);
+            });
+          };
+          // Use the label animation's eased progress so both ends of the
+          // connector track the moving point and label without a separate clock.
+          update(0);
+          const frame = () => {
+            if (!svg.isConnected) return;
+            if (animation.playState === "finished") {
+              update(1);
+              return;
+            }
+            update(animation.effect.getComputedTiming().progress ?? 0);
+            requestAnimationFrame(frame);
+          };
+          requestAnimationFrame(frame);
+        });
       }
 
       function renderFrontier(groups) {
@@ -1090,20 +1249,32 @@
           .map((stat, index) => {
             const pointX = x(stat.value),
               pointY = y(stat.quality);
-            const label =
-              stat.name.length > 28 ? `${stat.name.slice(0, 27)}…` : stat.name;
             const detail = `${stat.name} · ${metric.format(stat.value)} · ${Math.round(stat.quality * 100)}% quality`;
-            return `<g class="frontier-mark" tabindex="0" aria-label="${escapeHtml(detail)}"><circle class="frontier-point ${pareto.has(stat.name) ? "pareto" : ""}" cx="${pointX}" cy="${pointY}" r="8" fill="${stat.color}"></circle><text class="frontier-index" x="${pointX}" y="${pointY}">${index + 1}</text><text class="frontier-point-label" x="${pointX}" y="${pointY + 26}" text-anchor="middle">${escapeHtml(label)}</text></g>`;
+            return `<g class="frontier-mark" tabindex="0" aria-label="${escapeHtml(detail)}"><circle class="frontier-point ${pareto.has(stat.name) ? "pareto" : ""}" cx="${pointX}" cy="${pointY}" r="8" fill="${stat.color}"></circle><text class="frontier-index" x="${pointX}" y="${pointY}">${index + 1}</text></g>`;
           })
           .join("");
+        const labels = stats.map((stat) => {
+          const label = stat.configuration.length > 28
+            ? `${stat.configuration.slice(0, 27)}…`
+            : stat.configuration;
+          return `<text class="frontier-point-label" data-key="${escapeHtml(stat.name)}" x="0" y="0">${escapeHtml(label)}</text>`;
+        }).join("");
+        const links = stats.map(() => '<line class="frontier-label-link" style="display:none"/>').join("");
         const legend = stats
           .map(
             (stat, index) =>
               `<div class="frontier-key"><i style="--point:${stat.color}"></i><span title="${escapeHtml(stat.name)}">${index + 1}. ${escapeHtml(stat.name)}</span><b>${metric.format(stat.value)} · ${Math.round(stat.quality * 100)}%${pareto.has(stat.name) ? " · frontier" : ""}</b></div>`,
           )
           .join("");
+        const previousLabels = captureFrontierLabels(element("frontier").querySelector("svg"));
         element("frontier").innerHTML =
-          `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Quality frontier by ${frontierMetric}">${grid}${line}${points}<text class="frontier-axis" x="${(left + right) / 2}" y="${height - 8}" text-anchor="middle">${metric.label}</text><text class="frontier-axis" transform="translate(14 ${(plotTop + bottom) / 2}) rotate(-90)" text-anchor="middle">REQUIREMENT COMPLETION</text></svg><div class="frontier-legend">${legend}</div>`;
+          `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Quality frontier by ${frontierMetric}">${grid}${line}${points}<g class="frontier-labels">${links}${labels}</g><text class="frontier-axis" x="${(left + right) / 2}" y="${height - 8}" text-anchor="middle">${metric.label}</text><text class="frontier-axis" transform="translate(14 ${(plotTop + bottom) / 2}) rotate(-90)" text-anchor="middle">REQUIREMENT COMPLETION</text></svg><div class="frontier-legend">${legend}</div>`;
+        layoutFrontierLabels(
+          element("frontier").querySelector("svg"),
+          stats.map((stat) => ({ x: x(stat.value), y: y(stat.quality) })),
+          { left, right, top: plotTop, bottom },
+          frontierPoints.map((stat) => ({ x: x(stat.value), y: y(stat.quality) })),
+        );
 
         const marks = document.querySelectorAll(".frontier-mark");
         const nextPositions = new Map(
@@ -1113,7 +1284,16 @@
           ]),
         );
         if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
-          const pointDuration = 1000;
+          const pointDuration = FRONTIER_MOTION.duration;
+          const moving = stats.some((stat) => {
+            const previous = frontierPositions.get(stat.name);
+            const current = nextPositions.get(stat.name);
+            return previous && (previous.x !== current.x || previous.y !== current.y);
+          });
+          if (moving)
+            animateFrontierLabels(
+              element("frontier").querySelector("svg"), previousLabels,
+            );
           marks.forEach((mark, index) => {
             const current = nextPositions.get(stats[index].name);
             const previous = frontierPositions.get(stats[index].name);
@@ -1125,10 +1305,7 @@
                   },
                   { transform: "translate(0, 0)" },
                 ],
-                {
-                  duration: pointDuration,
-                  easing: "cubic-bezier(.22, 1, .36, 1)",
-                },
+                FRONTIER_MOTION,
               );
           });
           element("frontier")
