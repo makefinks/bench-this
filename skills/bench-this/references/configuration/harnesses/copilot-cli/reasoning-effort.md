@@ -17,8 +17,9 @@ arguments:
   - --reasoning-effort=high
 ```
 
-Recent Copilot CLI versions expose `none`, `low`, `medium`, `high`, `xhigh`, and `max`; the
-installed version and selected model determine actual support. `max` is Copilot's highest-depth
+Recent Copilot CLI versions expose `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and
+`max`; the installed version and selected model determine actual support. `max` is Copilot's
+highest-depth
 Anthropic tier, not a generic synonym for `xhigh`. Prefer the long `--reasoning-effort` spelling in
 benchmark manifests so the treatment is self-explanatory.
 

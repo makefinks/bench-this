@@ -169,7 +169,7 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
             required_fields=COMMON_REQUIRED_FIELDS,
             config_home=".copilot",
             installer=InstallerSpec(
-                arguments=MappingProxyType({"COPILOT_CLI_VERSION": "1.0.73"}),
+                arguments=MappingProxyType({"COPILOT_CLI_VERSION": "1.0.83"}),
                 commands=('npm install --global "@github/copilot@${COPILOT_CLI_VERSION}"',),
             ),
             adapter=AdapterKind.COPILOT,
@@ -213,7 +213,7 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
             required_fields=COMMON_REQUIRED_FIELDS | frozenset({"provider", "agent"}),
             config_home=".config/opencode",
             installer=InstallerSpec(
-                arguments=MappingProxyType({"OPENCODE_VERSION": "1.17.18"}),
+                arguments=MappingProxyType({"OPENCODE_VERSION": "1.18.29"}),
                 commands=('npm install --global "opencode-ai@${OPENCODE_VERSION}"',),
             ),
             adapter=AdapterKind.OPENCODE,
@@ -252,7 +252,7 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
             config_home=".omp/agent",
             installer=InstallerSpec(
                 arguments=MappingProxyType(
-                    {"BUN_VERSION": "1.3.14", "OMP_VERSION": "17.2.9"}
+                    {"BUN_VERSION": "1.4.2", "OMP_VERSION": "18.1.10"}
                 ),
                 commands=(
                     'npm install --global "bun@${BUN_VERSION}"',
@@ -293,8 +293,8 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
             installer=InstallerSpec(
                 arguments=MappingProxyType(
                     {
-                        "PI_MCP_ADAPTER_VERSION": "2.27.0",
-                        "PI_VERSION": "0.84.2",
+                        "PI_MCP_ADAPTER_VERSION": "2.32.1",
+                        "PI_VERSION": "0.85.0",
                     }
                 ),
                 commands=(
