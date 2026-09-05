@@ -120,6 +120,53 @@
         height: 1px;
         opacity: 0;
       }
+      .selection {
+        margin-bottom: 12px;
+      }
+      .selection summary {
+        cursor: pointer;
+        padding: 14px 16px;
+      }
+      .selection-body {
+        padding: 0 16px 16px;
+      }
+      .selection label {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        cursor: pointer;
+        overflow-wrap: anywhere;
+      }
+      .selection input {
+        accent-color: var(--accent);
+        flex-shrink: 0;
+      }
+      .selection input:focus-visible,
+      .selection summary:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .experiment-options {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+        gap: 12px;
+        margin-top: 12px;
+        max-height: 360px;
+        overflow: auto;
+      }
+      .experiment-options fieldset {
+        min-width: 0;
+        margin: 0;
+        border: 1px solid var(--line);
+        padding: 12px;
+      }
+      .experiment-options legend {
+        max-width: 100%;
+        color: var(--accent);
+      }
+      .experiment-options fieldset > label + label {
+        margin-top: 8px;
+      }
       .metrics {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
@@ -578,12 +625,25 @@
       <header>
         <h1>bench-this</h1>
         <div class="controls">
-          <select id="experiment" aria-label="Experiment"></select>
           <button id="choose" type="button">Open results</button>
           <input id="file" type="file" accept=".jsonl,.json,application/json" />
         </div>
       </header>
 
+      <details class="panel selection" id="selection" open>
+        <summary>
+          Experiments &amp; treatments
+          <span class="subtle" id="selection-count"></span>
+        </summary>
+        <div class="selection-body">
+          <label><input id="select-all" type="checkbox" /> Select all</label>
+          <p class="subtle">
+            Choose treatments within each experiment. Rerun configurations are
+            shown separately by experiment.
+          </p>
+          <div class="experiment-options" id="experiment-options"></div>
+        </div>
+      </details>
       <section class="metrics" id="metrics"></section>
       <section class="grid">
         <article class="panel wide">
@@ -646,7 +706,9 @@
               <span class="section-id">03</span>
               <h2>Run ledger</h2>
             </div>
-            <span class="subtle">One row per task × configuration</span>
+            <span class="subtle"
+              >One row per experiment × task × configuration</span
+            >
           </div>
           <div class="table-wrap">
             <table>
@@ -655,6 +717,7 @@
                   <th>Status</th>
                   <th>Task</th>
                   <th>Configuration</th>
+                  <th>Experiment</th>
                   <th class="num">Tokens</th>
                   <th class="num">Cost</th>
                   <th class="num">Runtime</th>
@@ -694,6 +757,8 @@
         "No runs yet — run the benchmark or open a results file";
 
       let allRows = [];
+      let treatments = [];
+      let selectedTreatments = new Set();
       let frontierMetric = "cost";
       let frontierPositions = new Map();
       let showFrontierLabels = true;
@@ -789,34 +854,123 @@
         return rows;
       }
 
-      function experimentIds(rows) {
-        return [
-          ...new Set(rows.map((row) => row.experiment_id || "historical")),
-        ];
-      }
+      const experimentId = (row) => row.experiment_id || null;
+      const experimentLabel = (id) => id ?? "Historical runs";
+      // Tuple keys keep reruns independent, including historical rows without an ID.
+      const treatmentKey = (row) =>
+        JSON.stringify([experimentId(row), row.configuration]);
 
       function setRows(rows) {
         allRows = rows;
-        const ids = experimentIds(rows);
-        element("experiment").replaceChildren(
-          ...(ids.length
-            ? ids.map(
-                (id) =>
-                  new Option(id === "historical" ? "Historical runs" : id, id),
-              )
-            : [new Option("No results yet", "")]),
-        );
-        element("experiment").value = ids.at(-1) ?? "";
+        const groups = new Map();
+        for (const row of rows) {
+          const key = treatmentKey(row);
+          if (!groups.has(key))
+            groups.set(key, {
+              key,
+              experiment: experimentId(row),
+              configuration: row.configuration,
+              count: 0,
+            });
+          groups.get(key).count++;
+        }
+        treatments = [...groups.values()];
+        selectedTreatments = new Set(groups.keys());
+        renderSelection();
         render();
       }
 
+      function renderSelection() {
+        const experiments = new Map();
+        treatments.forEach((treatment, index) => {
+          if (!experiments.has(treatment.experiment))
+            experiments.set(treatment.experiment, []);
+          experiments.get(treatment.experiment).push({ ...treatment, index });
+        });
+        element("selection").hidden = !treatments.length;
+        element("experiment-options").innerHTML = [...experiments.entries()]
+          .map(
+            ([id, options], index) => `
+            <fieldset>
+              <legend><label><input type="checkbox" data-experiment="${index}" />${escapeHtml(experimentLabel(id))}</label></legend>
+              ${options
+                .sort((a, b) => a.configuration.localeCompare(b.configuration))
+                .map(
+                  (option) => `
+                <label><input type="checkbox" data-treatment="${option.index}" />
+                  <span>${escapeHtml(option.configuration)} <span class="subtle">(${option.count} run${option.count === 1 ? "" : "s"})</span></span>
+                </label>`,
+                )
+                .join("")}
+            </fieldset>`,
+          )
+          .join("");
+        element("experiment-options")
+          .querySelectorAll("[data-treatment]")
+          .forEach((input) => {
+            input.addEventListener("change", () => {
+              const key = treatments[Number(input.dataset.treatment)].key;
+              if (input.checked) selectedTreatments.add(key);
+              else selectedTreatments.delete(key);
+              render();
+            });
+          });
+        element("experiment-options")
+          .querySelectorAll("[data-experiment]")
+          .forEach((input, index) => {
+            const options = [...experiments.values()][index];
+            input.addEventListener("change", () => {
+              for (const option of options) {
+                if (input.checked) selectedTreatments.add(option.key);
+                else selectedTreatments.delete(option.key);
+              }
+              render();
+            });
+          });
+      }
+
+      function updateSelection() {
+        const update = (input, keys) => {
+          const count = keys.filter((key) =>
+            selectedTreatments.has(key),
+          ).length;
+          input.checked = keys.length > 0 && count === keys.length;
+          input.indeterminate = count > 0 && count < keys.length;
+        };
+        update(
+          element("select-all"),
+          treatments.map((treatment) => treatment.key),
+        );
+        element("experiment-options")
+          .querySelectorAll("fieldset")
+          .forEach((fieldset) => {
+            const inputs = [...fieldset.querySelectorAll("[data-treatment]")];
+            const keys = inputs.map(
+              (input) => treatments[Number(input.dataset.treatment)].key,
+            );
+            inputs.forEach((input, index) => update(input, [keys[index]]));
+            update(fieldset.querySelector("[data-experiment]"), keys);
+          });
+        element("selection-count").textContent =
+          ` · ${selectedTreatments.size} / ${treatments.length} selected`;
+      }
+
       function groupByConfiguration(rows) {
-        return Object.entries(
-          rows.reduce((groups, row) => {
-            (groups[row.configuration] ||= []).push(row);
-            return groups;
-          }, {}),
-        ).sort(([a], [b]) => a.localeCompare(b));
+        const groups = new Map();
+        const multipleExperiments = new Set(allRows.map(experimentId)).size > 1;
+        for (const row of rows) {
+          const key = treatmentKey(row);
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(row);
+        }
+        return [...groups.values()]
+          .map((runs) => [
+            multipleExperiments
+              ? `${runs[0].configuration} · ${experimentLabel(experimentId(runs[0]))}`
+              : runs[0].configuration,
+            runs,
+          ])
+          .sort(([a], [b]) => a.localeCompare(b));
       }
 
       function paretoConfigurations(stats) {
@@ -1005,16 +1159,16 @@
         });
       }
 
-      function renderEmptyState() {
+      function renderEmptyState(message = EMPTY_MESSAGE) {
         element("metrics").style.display = "none";
-        element("experiment").style.display = "none";
+        element("frontier-tooltip").hidden = true;
+        frontierPositions = new Map();
         element("token-legend").innerHTML = "";
-        element("frontier").innerHTML =
-          `<div class="empty">${EMPTY_MESSAGE}</div>`;
+        element("frontier").innerHTML = `<div class="empty">${message}</div>`;
         element("token-chart").innerHTML =
-          `<div class="empty">${EMPTY_MESSAGE}</div>`;
+          `<div class="empty">${message}</div>`;
         element("runs").innerHTML =
-          `<tr><td colspan="6" class="empty">${EMPTY_MESSAGE}</td></tr>`;
+          `<tr><td colspan="7" class="empty">${message}</td></tr>`;
       }
 
       function renderMetrics(rows) {
@@ -1104,8 +1258,13 @@
 
       function ledgerGroups(rows) {
         const groups = rows.reduce((entries, row) => {
-          const key = `${row.configuration}\0${row.task}`;
+          const key = JSON.stringify([
+            experimentId(row),
+            row.configuration,
+            row.task,
+          ]);
           (entries[key] ||= {
+            experiment: experimentId(row),
             task: row.task,
             configuration: row.configuration,
             rows: [],
@@ -1116,13 +1275,16 @@
         return Object.values(groups).sort(
           (a, b) =>
             a.configuration.localeCompare(b.configuration) ||
+            experimentLabel(a.experiment).localeCompare(
+              experimentLabel(b.experiment),
+            ) ||
             a.task.localeCompare(b.task),
         );
       }
 
       function renderLedger(rows) {
         element("runs").innerHTML = ledgerGroups(rows)
-          .map(({ task, configuration, rows: repetitions }) => {
+          .map(({ task, configuration, experiment, rows: repetitions }) => {
             const passed = repetitions.filter((row) => row.passed).length;
             const status =
               repetitions.length > 1
@@ -1141,6 +1303,7 @@
                 <td><span class="status ${passed === repetitions.length ? "pass" : ""}" title="${repetitionLabel}">${status}</span></td>
                 <td>${escapeHtml(task)}</td>
                 <td>${escapeHtml(configuration)}</td>
+                <td>${escapeHtml(experimentLabel(experiment))}</td>
                 <td class="num" title="Average over ${runLabel}">${formatCompact(average(repetitions.map(totalTokens)))}</td>
                 <td class="num">${formatMoney(average(costs))}</td>
                 <td class="num">${average(repetitions.map((row) => row.duration_seconds || 0)).toFixed(1)}s</td>
@@ -1150,18 +1313,20 @@
       }
 
       function render() {
+        updateSelection();
         if (!allRows.length) {
           renderEmptyState();
           return;
         }
 
-        element("metrics").style.display = "";
-        element("experiment").style.display = "";
-
-        const selectedExperiment = element("experiment").value;
-        const rows = allRows.filter(
-          (row) => (row.experiment_id || "historical") === selectedExperiment,
+        const rows = allRows.filter((row) =>
+          selectedTreatments.has(treatmentKey(row)),
         );
+        if (!rows.length) {
+          renderEmptyState("No treatments selected — choose treatments above");
+          return;
+        }
+        element("metrics").style.display = "";
         const configurationGroups = groupByConfiguration(rows);
 
         renderMetrics(rows);
@@ -1186,7 +1351,14 @@
           const [file] = event.target.files;
           if (file) loadResultsFile(file);
         });
-        element("experiment").addEventListener("change", render);
+        element("select-all").addEventListener("change", (event) => {
+          selectedTreatments = new Set(
+            event.target.checked
+              ? treatments.map((treatment) => treatment.key)
+              : [],
+          );
+          render();
+        });
         element("toggle-labels").addEventListener("click", (event) => {
           showFrontierLabels = !showFrontierLabels;
           event.currentTarget.setAttribute("aria-pressed", showFrontierLabels);
