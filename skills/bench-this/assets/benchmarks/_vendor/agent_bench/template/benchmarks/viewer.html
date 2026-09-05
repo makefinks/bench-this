@@ -676,6 +676,13 @@
                 >
                   Runtime
                 </button>
+                <button
+                  type="button"
+                  data-frontier="turns"
+                  aria-pressed="false"
+                >
+                  Turns
+                </button>
               </div>
               <span class="controls-divider" aria-hidden="true"></span>
               <button
@@ -803,6 +810,11 @@
           value: (row) => row.duration_seconds ?? null,
           format: (value) => `${value.toFixed(1)}s`,
           label: "AVERAGE RUNTIME / RUN",
+        },
+        turns: {
+          value: (row) => row.turns ?? null,
+          format: (value) => `${value.toFixed(1)}`,
+          label: "AVERAGE TURNS / RUN",
         },
       };
 
@@ -995,6 +1007,9 @@
             const runtimes = rows
               .map((row) => row.duration_seconds)
               .filter((value) => value != null);
+            const turnCounts = rows
+              .map((row) => row.turns)
+              .filter((value) => value != null);
 
             return {
               name,
@@ -1006,6 +1021,7 @@
               cost: average(costs),
               tokens: average(rows.map(totalTokens)),
               runtime: average(runtimes),
+              turns: average(turnCounts),
             };
           })
           .filter((stat) => stat.value != null);
@@ -1014,6 +1030,7 @@
       function frontierTooltipContent(stat) {
         const runtime =
           stat.runtime == null ? "—" : `${stat.runtime.toFixed(1)}s`;
+        const turns = stat.turns == null ? "—" : `${stat.turns.toFixed(1)}`;
         return `
           <div class="tooltip-kicker">Treatment</div>
           <div class="tooltip-title">${escapeHtml(stat.name)}</div>
@@ -1023,6 +1040,7 @@
             <span>Average cost</span><b>${formatMoney(stat.cost)}</b>
             <span>Average tokens</span><b>${formatCompact(stat.tokens)}</b>
             <span>Average runtime</span><b>${runtime}</b>
+            <span>Average turns</span><b>${turns}</b>
           </div>`;
       }
 
