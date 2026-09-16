@@ -827,14 +827,21 @@
         },
       };
 
-      function completionRate(row) {
-        const checks = [
-          ...Object.values(row.public_test_results || {}),
-          ...Object.values(row.group_results || {}),
-        ];
-        return checks.length
-          ? checks.filter(Boolean).length / checks.length
-          : Number(row.passed);
+      function completionRate(rows) {
+        // Pool reported checks; missing results must not become invented pass/fail checks.
+        let passed = 0;
+        let total = 0;
+        for (const key of ["public_test_results", "group_results"]) {
+          for (const row of rows) {
+            const results = row[key];
+            if (!results) continue;
+            for (const group in results) {
+              total++;
+              if (results[group]) passed++;
+            }
+          }
+        }
+        return total ? passed / total : null;
       }
 
       function escapeHtml(value) {
@@ -1026,7 +1033,7 @@
               experiment: experimentLabel(experimentId(rows[0])),
               color: FRONTIER_COLORS[index % FRONTIER_COLORS.length],
               value: average(measurements),
-              quality: average(rows.map(completionRate)),
+              quality: completionRate(rows),
               runs: rows.length,
               passed: rows.filter((row) => row.passed).length,
               cost: average(costs),
@@ -1035,7 +1042,7 @@
               turns: average(turnCounts),
             };
           })
-          .filter((stat) => stat.value != null);
+          .filter((stat) => stat.value != null && stat.quality != null);
       }
 
       function frontierTooltipContent(stat) {
@@ -1210,7 +1217,7 @@
         if (!stats.length) {
           frontierPositions = new Map();
           element("frontier").innerHTML =
-            `<div class="empty">No ${frontierMetric} telemetry</div>`;
+            `<div class="empty">Comparison requires requirement checks and ${frontierMetric} telemetry</div>`;
           return;
         }
 

@@ -60,6 +60,13 @@ exactly match `requirement_groups`. Public and hidden IDs are scored and reporte
 overall diagnostic score combines both sets. Strict task success for skill-authored tasks requires
 the solver, public suite, and hidden suite all to exit `0`.
 
+The summary's overall completion and the viewer's requirement completion both divide passed public
+and hidden group results by all reported group results across the selected runs. Each suite's group
+result counts once per run, regardless of its assertion count; runs with more groups carry more
+weight. Missing results contribute no checks. With no reported groups, completion is unknown and
+the viewer omits the configuration from the frontier. Strict task pass rate remains separate and
+includes every run.
+
 ## Copilot configuration
 
 ```yaml
