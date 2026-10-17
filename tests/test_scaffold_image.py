@@ -47,6 +47,17 @@ def test_scaffold_has_empty_generator_owned_configuration_root(tmp_path: Path) -
     assert [path.name for path in configurations.iterdir()] == [".gitkeep"]
 
 
+def test_scaffold_keeps_setup_environment_forwarding_opt_in(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+
+    benchmark = scaffold(project)
+
+    manifest = yaml.safe_load((benchmark / "benchmark.yaml").read_text())
+    assert manifest["setup_environment"] == []
+    assert load_project(benchmark).setup_environment == []
+
+
 def test_scaffold_includes_dependency_free_results_viewer(tmp_path: Path) -> None:
     project = tmp_path / "project"
     project.mkdir()

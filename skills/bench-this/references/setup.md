@@ -29,7 +29,7 @@ dependency environments from affecting evaluation.
 
 - Make setup non-interactive and deterministic from the checked-out lockfiles or manifests.
 - Install only project dependencies and generated build artifacts. Do not add credentials, hidden
-  tests, benchmark metadata, or host-specific paths.
+  tests, benchmark metadata, or host-specific paths to the workspace.
 - Use commands available inside the image. Do not rely on host aliases, shell startup files, or
   host-managed virtual environments.
 - Ensure setup works at every task's base and reference commit; dependency metadata can differ
@@ -58,6 +58,51 @@ solver receives a writable copy at `.agent-bench-public-tests/` so it can inspec
 tests, but evaluation never trusts that copy. The runner reports final modifications or deletions of
 supplied public test files as integrity telemetry without changing the score. Public evaluators have
 the same no-network, no-credential, bounded-runtime constraints as hidden evaluators.
+
+## Dependency authentication
+
+Before dependency installation, inspect the project's installation commands, package-manager
+configuration, authentication documentation, and relevant credential-export or refresh scripts at
+the required historical commits. Inspect variable references without printing current secret values
+or running host authentication scripts. Configure the complete set actually consumed by the install
+workflow under `setup_environment` in `benchmarks/benchmark.yaml`, alongside `setup_command`:
+
+```yaml
+setup_environment:
+  - REGISTRY_SESSION
+  - REGISTRY_REGION
+  - PACKAGE_INDEX_URL
+```
+
+Use the project's actual variable names. Include cloud access keys, session credentials and region,
+registry tokens, and package-manager settings when required by that workflow. Do not guess a minimal
+token subset or forward every authentication-looking host variable. Configure this list without a
+separate approval and summarize the names, never the values. Task agents report requirements; the
+coordinator owns the shared list.
+
+Every listed variable must be present in the runner's inherited environment. An omitted or empty
+list forwards nothing additional. Values are read anew on each runner invocation; presence does not
+prove valid authentication. The runner forwards only the selected variables to solver setup,
+evaluator setup, and base/reference validation setup. They are separate from harness/provider
+authentication and unavailable to the solver, public or hidden evaluators, identity preflight, and
+image builds. Installed dependencies remain usable after setup exits.
+
+Treat authenticated registry URLs as secrets too. Keep values out of manifests, prompts, reports,
+and images. Setup must neither echo credentials nor write them into workspace files, including
+package-manager configuration; use the runner-owned temporary `HOME` for home-based configuration.
+Evaluators reinstall dependencies in their separate workspace. Setup commands are trusted with
+these credentials; the runner does not scan or redact arbitrary installation output. Host Docker
+metadata remains within the existing local-user trust model.
+
+Missing exports and registry authentication failures are setup infrastructure failures, not task
+behavioral evidence. Diagnose the actual error rather than assuming every setup failure means
+expiry. For expired credentials, report the failure without values. Ask the user to refresh
+authentication externally, load the required environment into their shell, and restart or resume
+the harness from that shell. Wait for the user to return in that authenticated session before
+retrying affected task validation. Explain that exports in a separate terminal cannot update an
+already-running harness's inherited environment. Refreshing values requires no manifest changes or
+task recreation. Changing the forwarding list changes the shared validation environment and
+requires revalidating all tasks.
 
 ## Verification order
 

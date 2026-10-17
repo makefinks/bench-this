@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+import yaml
 
 from agent_bench.config import load_configuration, load_project, load_task
 from agent_bench.cli import _parser
@@ -56,6 +57,34 @@ def test_project_rejects_missing_setup_script(tmp_path):
 
     with pytest.raises(ConfigurationError, match=r"setup\.sh does not exist"):
         load_project(tmp_path / "benchmarks")
+
+
+@pytest.mark.parametrize("names", [[], ["REGISTRY_SESSION", "_registry_region2"]])
+def test_project_loads_setup_environment_names(tmp_path, names):
+    original = project(tmp_path)
+    assert original.setup_environment == []
+    path = original.benchmark_dir / "benchmark.yaml"
+    data = yaml.safe_load(path.read_text())
+    data["setup_environment"] = names
+    path.write_text(yaml.safe_dump(data))
+
+    assert load_project(original.benchmark_dir).setup_environment == names
+
+
+@pytest.mark.parametrize(
+    "value",
+    [None, "REGISTRY_SESSION", {}, [123], [False], [""], ["1TOKEN"],
+     ["REGISTRY-*"], ["TOKEN=value"], ["TOKEN\n"], ["TOKEN NAME"], ["HOME"]],
+)
+def test_project_rejects_invalid_setup_environment(tmp_path, value):
+    original = project(tmp_path)
+    path = original.benchmark_dir / "benchmark.yaml"
+    data = yaml.safe_load(path.read_text())
+    data["setup_environment"] = value
+    path.write_text(yaml.safe_dump(data))
+
+    with pytest.raises(ConfigurationError, match="setup_environment"):
+        load_project(original.benchmark_dir)
 
 
 def test_schema_rejects_missing_task_field(tmp_path):

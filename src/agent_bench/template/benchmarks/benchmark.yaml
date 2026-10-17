@@ -5,6 +5,8 @@ image:
   dockerfile: benchmarks/Dockerfile
 
 setup_command: /bin/sh /benchmark/setup.sh /workspace
+# Required host variable names for dependency setup only; never put secret values here.
+setup_environment: []
 compose_file: null
 
 defaults:

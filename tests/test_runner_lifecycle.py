@@ -1,6 +1,7 @@
 import subprocess
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ class FakeDocker:
     def __init__(self):
         self.calls = []
         self.timeouts = []
+        self.environments = []
         self.secret_environments = []
 
     def run(
@@ -41,6 +43,7 @@ class FakeDocker:
     ):
         mounts = list(mounts)
         self.timeouts.append(timeout_seconds)
+        self.environments.append(environment)
         self.secret_environments.append(secret_environment)
         self.calls.append((command, mounts, network, stdout_path, stderr_path, stream_output))
         targets = {mount.target: mount for mount in mounts}
@@ -69,6 +72,7 @@ class FakeDocker:
             )
             assert not (workspace / ".git").exists()
             assert not (workspace / "benchmarks").exists()
+            assert (workspace / ".venv/bin/python").read_text() == "prepared\n"
             (workspace / "answer.txt").write_text("solved\n")
             (workspace / ".venv").rename(workspace / ".venv-replaced-by-solver")
             public_tests = workspace / ".agent-bench-public-tests"
@@ -103,7 +107,8 @@ def git(repo: Path, *args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=repo, text=True).strip()
 
 
-def test_preflight_happens_before_source_and_hidden_tests_follow_solver(tmp_path):
+@pytest.fixture
+def lifecycle_case(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     git(repo, "init", "-q")
@@ -164,9 +169,28 @@ def test_preflight_happens_before_source_and_hidden_tests_follow_solver(tmp_path
         auth_profile="work",
         arguments=[],
     )
+    return project, task, config, tmp_path / "auth"
+
+
+@pytest.mark.parametrize(
+    "setup_environment", [[], ["REGISTRY_SESSION", "PACKAGE_INDEX_URL", "_registry_region2"]]
+)
+def test_preflight_happens_before_source_and_hidden_tests_follow_solver(
+    lifecycle_case, monkeypatch, setup_environment
+):
+    host_environment = {
+        "REGISTRY_SESSION": "synthetic-setup-session",
+        "PACKAGE_INDEX_URL": "https://user:synthetic-password@registry.invalid/simple",
+        "_registry_region2": "synthetic-region",
+        "UNRELATED_HOST_SECRET": "not-for-containers",
+    }
+    for name, value in host_environment.items():
+        monkeypatch.setenv(name, value)
+    project, task, config, auth_root = lifecycle_case
+    project = replace(project, setup_environment=setup_environment)
     docker = FakeDocker()
     progress = []
-    result = BenchmarkRunner(project, docker=docker, auth_root=tmp_path / "auth").run_one(
+    result = BenchmarkRunner(project, docker=docker, auth_root=auth_root).run_one(
         task, config, 1, progress=progress.append
     )
     assert result.passed
@@ -181,13 +205,16 @@ def test_preflight_happens_before_source_and_hidden_tests_follow_solver(tmp_path
     assert result.run_id in result.log_directory
     assert len(result.task_digest) == 64
     assert len(result.configuration_digest) == 64
-    injected = [
-        environment
-        for environment in docker.secret_environments
-        if environment is not None
-    ]
-    assert len(injected) == 2
-    assert injected[0] is injected[1]
+    assert docker.secret_environments[0] is docker.secret_environments[2]
+    selected = {name: host_environment[name] for name in setup_environment}
+    for index in (1, 3):
+        assert (docker.secret_environments[index] or {}) == selected
+        assert docker.environments[index] == {"HOME": "/tmp/benchmark-home"}
+    for index in (0, 2, 4, 5):
+        assert not host_environment.keys() & (
+            docker.environments[index].keys()
+            | (docker.secret_environments[index] or {}).keys()
+        )
     assert result.public_test_results == {"public-basic": True}
     assert result.group_results == {"hidden-edge": True}
     assert result.public_test_mutation_detected
@@ -220,6 +247,60 @@ def test_preflight_happens_before_source_and_hidden_tests_follow_solver(tmp_path
     public_evaluator_mounts = {mount.target: mount.source for mount in docker.calls[4][1]}
     assert solver_mounts["/workspace"] != evaluator_setup_mounts["/workspace"]
     assert public_evaluator_mounts["/workspace"] == evaluator_setup_mounts["/workspace"]
+
+
+@pytest.mark.parametrize("phase", ["solver_setup", "evaluator_setup"])
+def test_missing_setup_environment_stops_the_affected_container(
+    lifecycle_case, monkeypatch, phase
+):
+    class MissingEnvironmentDocker(FakeDocker):
+        def run(self, image, command, *args, **kwargs):
+            result = super().run(image, command, *args, **kwargs)
+            if kwargs["stdout_path"].name == "solver.stdout.jsonl":
+                monkeypatch.delenv("REGISTRY_SESSION")
+            return result
+
+    project, task, config, auth_root = lifecycle_case
+    project = replace(project, setup_environment=["REGISTRY_SESSION", "PACKAGE_INDEX_URL"])
+    monkeypatch.setenv("PACKAGE_INDEX_URL", "https://user:secret@registry.invalid/simple")
+    if phase == "solver_setup":
+        monkeypatch.delenv("REGISTRY_SESSION", raising=False)
+    else:
+        monkeypatch.setenv("REGISTRY_SESSION", "synthetic-session")
+    docker = MissingEnvironmentDocker()
+
+    result = BenchmarkRunner(project, docker=docker, auth_root=auth_root).run_one(task, config, 1)
+
+    assert not result.passed and result.failure_kind == phase
+    assert len(docker.calls) == (1 if phase == "solver_setup" else 3)
+    assert "REGISTRY_SESSION" in result.error
+    assert "https://user:secret@registry.invalid/simple" not in result.error
+
+
+@pytest.mark.parametrize("phase", ["solver_setup", "evaluator_setup"])
+def test_setup_failure_diagnostics_do_not_copy_installation_output(
+    lifecycle_case, monkeypatch, phase
+):
+    registry_url = "https://user:synthetic-secret@registry.invalid/simple"
+
+    class FailedSetupDocker(FakeDocker):
+        def run(self, *args, **kwargs):
+            result = super().run(*args, **kwargs)
+            if kwargs["stdout_path"].name == f"{phase.replace('_', '-')}.stdout.log":
+                return CommandResult(1, "", f"rejected {registry_url}", 0.1)
+            return result
+
+    project, task, config, auth_root = lifecycle_case
+    project = replace(project, setup_environment=["PACKAGE_INDEX_URL"])
+    monkeypatch.setenv("PACKAGE_INDEX_URL", registry_url)
+
+    result = BenchmarkRunner(project, docker=FailedSetupDocker(), auth_root=auth_root).run_one(
+        task, config, 1
+    )
+
+    assert not result.passed and result.failure_kind == phase
+    assert registry_url not in result.error
+    assert result.log_directory in result.error
 
 
 @pytest.mark.parametrize(

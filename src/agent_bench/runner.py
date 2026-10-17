@@ -18,7 +18,7 @@ from .auth import PreparedAuth, prepare_home
 
 from .config import discover_configurations, discover_tasks
 from .docker import DockerEngine, Mount, diagnose_output
-from .errors import BenchmarkError, CommandTimeout, InfrastructureError
+from .errors import BenchmarkError, CommandTimeout, ConfigurationError, InfrastructureError
 from .evaluator import EvaluatorReport, parse_evaluator_report, validate_evaluator_exit
 from .harnesses import PREFLIGHT_PROMPT, adapter_for
 from .identity import configuration_digest, task_digest, validation_environment_digest
@@ -204,7 +204,16 @@ class BenchmarkRunner:
         stream_output: bool = True,
         log_prefix: str = "setup",
     ) -> None:
-        """Prepare one disposable workspace using the project image."""
+        """Prepare dependencies with only the declared host environment, confined to setup."""
+
+        missing = [name for name in self.project.setup_environment if name not in os.environ]
+        if missing:
+            message = "missing required setup environment variables: " + ", ".join(missing)
+            # Validation persists only the error category, so keep the actionable names in its log.
+            log_dir.mkdir(parents=True, exist_ok=True)
+            (log_dir / f"{log_prefix}.stderr.log").write_text(message + "\n", encoding="utf-8")
+            raise ConfigurationError(message)
+        setup_environment = {name: os.environ[name] for name in self.project.setup_environment}
 
         # A setup-only directory avoids unreliable single-file bind mounts without exposing tests.
         with tempfile.TemporaryDirectory(prefix="agent-bench-setup-") as temp:
@@ -220,9 +229,10 @@ class BenchmarkRunner:
                 stdout_path=log_dir / f"{log_prefix}.stdout.log",
                 stderr_path=log_dir / f"{log_prefix}.stderr.log",
                 stream_output=stream_output,
+                secret_environment=setup_environment,
             )
         if result.returncode:
-            raise InfrastructureError(f"setup failed: {result.stderr.strip() or result.stdout.strip()}")
+            raise InfrastructureError(f"setup failed with exit {result.returncode}; logs: {log_dir}")
 
     def _preflight(
         self,

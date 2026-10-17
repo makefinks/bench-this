@@ -108,14 +108,21 @@ def test_interactive_login_uses_normal_container_hardening(tmp_path, monkeypatch
     assert args[-2:] == ["fixture-image", "pi"]
 
 
-def test_secret_environment_value_is_not_placed_in_docker_arguments(tmp_path):
-    """Forward provider secrets by name so process arguments cannot expose values."""
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("AWS_BEARER_TOKEN_BEDROCK", "fixture-secret"),
+        ("PACKAGE_INDEX_URL", "https://user:fixture-secret@registry.invalid/simple"),
+    ],
+)
+def test_secret_environment_value_is_not_placed_in_docker_arguments(tmp_path, name, value):
+    """Forward provider and setup secrets by name, including authenticated registry URLs."""
 
     docker = tmp_path / "fake-docker"
     docker.write_text(
         "#!/bin/sh\n"
         "case \"$*\" in *fixture-secret*) exit 9;; esac\n"
-        "test \"$AWS_BEARER_TOKEN_BEDROCK\" = fixture-secret\n",
+        f'test "${{{name}}}" = "{value}"\n',
         encoding="utf-8",
     )
     docker.chmod(docker.stat().st_mode | stat.S_IXUSR)
@@ -126,7 +133,7 @@ def test_secret_environment_value_is_not_placed_in_docker_arguments(tmp_path):
         [],
         {},
         timeout_seconds=5,
-        secret_environment={"AWS_BEARER_TOKEN_BEDROCK": "fixture-secret"},
+        secret_environment={name: value},
     )
 
     assert result.returncode == 0

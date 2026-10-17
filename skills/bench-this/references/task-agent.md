@@ -101,6 +101,8 @@ Determine what the assigned task needs and report:
 
 - runtime versions and system packages;
 - a deterministic, non-interactive dependency setup command that works at both commits;
+- the complete required host environment variable names and the installation/authentication scripts
+  that consume them, following [dependency authentication](setup.md#dependency-authentication);
 - differences between the base and reference dependency metadata;
 - whether the shared image can support the task or a distinct image is genuinely necessary.
 
@@ -312,6 +314,7 @@ Return:
 - created files
 - required runtimes and OS packages
 - deterministic dependency setup command
+- required dependency-setup host variable names and supporting script paths, never values
 - compatibility notes for both commits
 - whether a task-specific image is genuinely required
 - validation results, difficulty evidence, and unresolved failures

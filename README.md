@@ -119,6 +119,7 @@ need a subscription (or other forms of authentication) for the chosen harness an
    runtime, and failure reasons per configuration and task. Open `benchmarks/viewer.html` for the
    interactive comparison.
 
+
 ## Developing
 
 `src/agent_bench/` is canonical; `skills/bench-this/assets/benchmarks/_vendor/` is generated.

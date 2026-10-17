@@ -2,9 +2,15 @@
 
 ## Project file
 
-`benchmarks/benchmark.yaml` contains one image, one setup command, defaults, and optional per-model
-prices. Explicit prices override the runner's best-effort Models.dev provider pricing. Keep
-`compose_file: null` in v1.
+`benchmarks/benchmark.yaml` contains one image, one setup command, an optional `setup_environment`
+list, defaults, and optional per-model prices. Explicit prices override the runner's best-effort
+Models.dev provider pricing. Keep `compose_file: null` in v1.
+
+`setup_environment` contains host variable names matching `[A-Za-z_][A-Za-z0-9_]*`, never values.
+Every name is required in the runner process environment; omission or `[]` forwards no additional
+variables. `HOME` is runner-owned and cannot be listed. See
+[dependency authentication](setup.md#dependency-authentication) for discovery, setup-only isolation,
+credential handling, and retry requirements.
 
 ## Task file
 

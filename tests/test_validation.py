@@ -4,7 +4,9 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+import yaml
 
+from agent_bench.config import load_project
 from agent_bench.errors import CommandTimeout
 from agent_bench.models import CommandResult, Defaults, ImageConfig, ProjectConfig, TaskConfig
 from agent_bench.runner import BenchmarkRunner
@@ -21,12 +23,17 @@ class FakeDocker:
         setup_timeout=False,
         evaluator_error=False,
         evaluator_output="",
+        required_setup_session=None,
     ):
         self.outcomes = iter(outcomes)
         self.setup_timeout = setup_timeout
         self.evaluator_error = evaluator_error
         self.evaluator_output = evaluator_output
+        self.required_setup_session = required_setup_session
         self.calls = []
+        self.environments = []
+        self.secret_environments = []
+        self.setup_sources = []
 
     def image_id(self, image):
         return "sha256:" + "a" * 64
@@ -35,10 +42,19 @@ class FakeDocker:
             workdir="/workspace", stdout_path=None, stderr_path=None, stream_output=False,
             secret_environment=None):
         self.calls.append((network, timeout_seconds, list(mounts), stream_output))
+        self.environments.append(environment)
+        self.secret_environments.append(secret_environment or {})
         if network == "bridge":
+            workspace = next(mount.source for mount in mounts if mount.target == "/workspace")
+            self.setup_sources.append((workspace / "source.txt").read_text())
             if self.setup_timeout:
                 self.setup_timeout = False
                 raise CommandTimeout("setup timed out")
+            if self.required_setup_session and (
+                not secret_environment
+                or secret_environment.get("REGISTRY_SESSION") != self.required_setup_session
+            ):
+                return CommandResult(1, "", "registry authentication rejected", 0.1)
             return CommandResult(0, "", "", 0.1)
         outcome = 2 if self.evaluator_error else next(self.outcomes)
         targets = {mount.target for mount in mounts}
@@ -215,6 +231,125 @@ def test_setup_timeout_writes_infrastructure_receipt(tmp_path):
     assert receipt.base.setup == "timed_out"
     assert set(receipt.base.phase_durations) == {"workspace", "setup"}
     assert receipt.reference.evaluator_exit is None
+
+
+def test_missing_setup_environment_stops_validation_before_setup(tmp_path, monkeypatch):
+    docker = FakeDocker()
+    runner, task = fixture(tmp_path, docker)
+    runner.project = replace(
+        runner.project,
+        setup_environment=["REGISTRY_SESSION", "REGISTRY_REGION", "PACKAGE_INDEX_URL"],
+    )
+    monkeypatch.setenv("REGISTRY_SESSION", "synthetic-present-secret")
+    monkeypatch.delenv("REGISTRY_REGION", raising=False)
+    monkeypatch.delenv("PACKAGE_INDEX_URL", raising=False)
+
+    receipt = runner.validate_task(task)
+
+    assert receipt.status == "infrastructure_error"
+    assert receipt.base.setup == "failed"
+    assert receipt.base.evaluator_exit is receipt.reference.evaluator_exit is None
+    assert docker.calls == []
+    attempt = runner.project.benchmark_dir / receipt.receipt_path
+    diagnostic = (attempt.parent / receipt.base.logs["setup_stderr"]).read_text()
+    assert "REGISTRY_REGION" in diagnostic and "PACKAGE_INDEX_URL" in diagnostic
+    assert "synthetic-present-secret" not in diagnostic
+
+
+def test_bulk_validation_forwards_setup_environment_at_both_commits(tmp_path, monkeypatch):
+    docker = FakeDocker()
+    runner, task = fixture(tmp_path, docker)
+    runner.project = replace(
+        runner.project, setup_environment=["REGISTRY_SESSION", "REGISTRY_OPTION"]
+    )
+    monkeypatch.setenv("REGISTRY_SESSION", "synthetic-validation-session")
+    monkeypatch.setenv("REGISTRY_OPTION", "")
+    monkeypatch.setenv("UNRELATED_HOST_SECRET", "not-for-validation")
+    (task.root / "task.yaml").write_text(yaml.safe_dump({
+        "version": 1,
+        "id": task.id,
+        "base_commit": task.base_commit,
+        "reference_commit": task.reference_commit,
+        "prompt": "prompt.md",
+        "public_tests_directory": "public-tests",
+        "public_test_command": task.public_test_command,
+        "public_test_groups": task.public_test_groups,
+        "hidden_tests_directory": "hidden-tests",
+        "test_command": task.test_command,
+        "requirement_groups": task.requirement_groups,
+    }))
+
+    receipt, = runner.validate_tasks()
+
+    assert receipt.status == "validated"
+    assert docker.setup_sources == ["base\n", "reference\n"]
+    selected = {"REGISTRY_SESSION": "synthetic-validation-session", "REGISTRY_OPTION": ""}
+    assert docker.secret_environments == [selected, {}, {}, selected, {}, {}]
+    assert docker.environments == [
+        {"HOME": "/tmp/benchmark-home"},
+        {"HOME": "/tmp/evaluator-home"},
+        {"HOME": "/tmp/evaluator-home"},
+        {"HOME": "/tmp/benchmark-home"},
+        {"HOME": "/tmp/evaluator-home"},
+        {"HOME": "/tmp/evaluator-home"},
+    ]
+
+
+def test_setup_authentication_failure_is_retryable_with_refreshed_host_environment(
+    tmp_path, monkeypatch
+):
+    docker = FakeDocker(required_setup_session="synthetic-fresh-session")
+    runner, task = fixture(tmp_path, docker)
+    manifest = runner.project.benchmark_dir / "benchmark.yaml"
+    manifest.write_text(yaml.safe_dump({
+        "version": 1,
+        "image": {"name": "fixture", "dockerfile": "benchmarks/Dockerfile"},
+        "setup_command": "setup",
+        "setup_environment": ["REGISTRY_SESSION"],
+    }))
+    (runner.project.benchmark_dir / "Dockerfile").write_text("FROM scratch\n")
+    runner.project = load_project(manifest.parent)
+    original_manifest = manifest.read_bytes()
+    monkeypatch.setenv("REGISTRY_SESSION", "synthetic-expired-session")
+
+    failed = runner.validate_task(task)
+
+    assert failed.status == "infrastructure_error"
+    assert failed.base.setup == "failed"
+    assert failed.base.evaluator_exit is failed.reference.evaluator_exit is None
+    latest_path = manifest.parent / "results/validation/demo/latest.json"
+    assert json.loads(latest_path.read_text())["status"] == "infrastructure_error"
+    monkeypatch.setenv("REGISTRY_SESSION", "synthetic-fresh-session")
+    retry_runner = BenchmarkRunner(load_project(manifest.parent), docker=docker)
+
+    refreshed = retry_runner.validate_task(task)
+
+    assert refreshed.status == "validated"
+    assert refreshed.attempt_id != failed.attempt_id
+    assert refreshed.environment_digest == failed.environment_digest
+    assert docker.setup_sources == ["base\n", "base\n", "reference\n"]
+    assert [values["REGISTRY_SESSION"] for values in docker.secret_environments if values] == [
+        "synthetic-expired-session", "synthetic-fresh-session", "synthetic-fresh-session"
+    ]
+    assert manifest.read_bytes() == original_manifest
+    assert json.loads(latest_path.read_text())["status"] == "validated"
+
+
+def test_validation_environment_identity_tracks_names_but_not_host_values(tmp_path, monkeypatch):
+    runner, task = fixture(tmp_path, FakeDocker())
+    original = runner.validate_task(task)
+    runner.project = replace(runner.project, setup_environment=["REGISTRY_SESSION"])
+    monkeypatch.setenv("REGISTRY_SESSION", "synthetic-session-one")
+    runner.docker = FakeDocker()
+
+    configured = runner.validate_task(task)
+
+    assert original.status == configured.status == "validated"
+    assert original.environment_digest != configured.environment_digest
+    monkeypatch.setenv("REGISTRY_SESSION", "synthetic-session-two")
+    runner.docker = FakeDocker()
+    refreshed = runner.validate_task(task)
+    assert refreshed.environment_digest == configured.environment_digest
 
 
 def test_evaluator_infrastructure_exit_never_validates(tmp_path):

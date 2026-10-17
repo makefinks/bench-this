@@ -100,6 +100,7 @@ def validation_environment_digest(project: ProjectConfig, image_id: str) -> str:
         {
             "image_id": image_id,
             "setup_command": project.setup_command,
+            "setup_environment": project.setup_environment,
             "setup_timeout_seconds": project.defaults.setup_timeout_seconds,
             "evaluator_timeout_seconds": project.defaults.evaluator_timeout_seconds,
         },

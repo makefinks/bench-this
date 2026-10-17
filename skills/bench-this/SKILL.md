@@ -118,7 +118,9 @@ workspace isolation, integration, and validation.
    and diagnose the protected-state mismatch; a retry requires a newly prepared workspace.
 3. After every bundle is accepted, consolidate shared runtime requirements into the root Dockerfile
    and `setup.sh`. Preserve the selected harness installation. The v1 format has one image and one
-   setup command.
+   setup command. Inspect the authentication/install workflow and task-agent reports to configure
+   `setup_environment` following [dependency
+   authentication](references/setup.md#dependency-authentication).
 
 ### Validate
 

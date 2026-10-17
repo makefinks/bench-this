@@ -20,6 +20,7 @@ from .models import (
 
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 COMMIT_PATTERN = re.compile(r"^[0-9a-fA-F]{7,64}$")
+ENVIRONMENT_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 AWS_REGION_PATTERN = re.compile(r"^[a-z]{2}(?:-[a-z0-9]+)+-[0-9]+$")
 ALLOWED_WIRE_APIS = frozenset({"completions", "responses"})
 
@@ -151,6 +152,17 @@ def load_project(benchmark_dir: Path) -> ProjectConfig:
     setup_command = data["setup_command"]
     if not isinstance(setup_command, str) or not setup_command.strip():
         raise ConfigurationError("setup_command must be a non-empty string")
+    setup_environment = data.get("setup_environment", [])
+    if not isinstance(setup_environment, list) or not all(
+        isinstance(name, str) and ENVIRONMENT_NAME_PATTERN.fullmatch(name)
+        for name in setup_environment
+    ):
+        raise ConfigurationError(
+            "setup_environment must be a list of environment variable names "
+            "matching [A-Za-z_][A-Za-z0-9_]*"
+        )
+    if "HOME" in setup_environment:
+        raise ConfigurationError("setup_environment conflicts with runner-owned HOME")
     _existing_file(benchmark_dir / "setup.sh", "setup.sh")
     return ProjectConfig(
         root=project_root,
@@ -165,6 +177,7 @@ def load_project(benchmark_dir: Path) -> ProjectConfig:
         setup_command=setup_command,
         defaults=defaults,
         prices=prices,
+        setup_environment=setup_environment,
     )
 
 

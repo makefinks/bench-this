@@ -81,6 +81,7 @@ class ProjectConfig:
     setup_command: str
     defaults: Defaults
     prices: Dict[str, ModelPrice] = field(default_factory=dict)
+    setup_environment: List[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
