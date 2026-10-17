@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import sys
 from statistics import mean
 from pathlib import Path
@@ -126,6 +127,16 @@ def main(argv=None) -> int:
             return 0
 
         project = load_project(_benchmark_dir(args.benchmark_dir))
+        if args.command in {"run", "validate-task", "validate-tasks"}:
+            missing = [name for name in project.setup_environment if name not in os.environ]
+            if missing:
+                print(
+                    "warning: missing required setup environment variables: "
+                    + ", ".join(missing)
+                    + ". Source or export these variables in the shell that launches the runner, "
+                    "then rerun this command.",
+                    file=sys.stderr,
+                )
         runner = BenchmarkRunner(project)
         if args.command == "build":
             runner.build()

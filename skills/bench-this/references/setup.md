@@ -87,6 +87,11 @@ evaluator setup, and base/reference validation setup. They are separate from har
 authentication and unavailable to the solver, public or hidden evaluators, identity preflight, and
 image builds. Installed dependencies remain usable after setup exits.
 
+`run`, `validate-task`, and `validate-tasks` also warn both the user and you on stderr if configured
+variables are absent. The warning lists missing names and tells the user to source or export them
+before retrying. The runner still records setup failures through its normal results and validation
+receipts.
+
 Treat authenticated registry URLs as secrets too. Keep values out of manifests, prompts, reports,
 and images. Setup must neither echo credentials nor write them into workspace files, including
 package-manager configuration; use the runner-owned temporary `HOME` for home-based configuration.

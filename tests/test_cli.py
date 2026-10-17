@@ -1,11 +1,14 @@
 import json
+import subprocess
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from agent_bench import cli
 from agent_bench.auth import PROVIDER_CREDENTIALS_FILE
 from agent_bench.models import RunResult
+from agent_bench.scaffold import scaffold
 
 
 @pytest.mark.parametrize("provider", ["amazon-bedrock", "openrouter"])
@@ -197,9 +200,16 @@ def test_auth_set_key_requires_provider_profile_and_key(
     assert not (home / ".agent-bench").exists()
 
 
-def test_validate_tasks_reports_every_receipt_before_failing(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("missing_setup", [False, True])
+def test_validate_tasks_reports_every_receipt_before_failing(
+    tmp_path, monkeypatch, capsys, missing_setup
+):
     benchmark = tmp_path / "benchmarks"
-    project = SimpleNamespace(benchmark_dir=benchmark)
+    project = SimpleNamespace(benchmark_dir=benchmark, setup_environment=["SETUP_SESSION"])
+    if missing_setup:
+        monkeypatch.delenv("SETUP_SESSION", raising=False)
+    else:
+        monkeypatch.setenv("SETUP_SESSION", "synthetic-session")
 
     class FakeRunner:
         def __init__(self, loaded_project):
@@ -231,11 +241,20 @@ def test_validate_tasks_reports_every_receipt_before_failing(tmp_path, monkeypat
     assert "[ok] passing" in captured.out
     assert "[fail] failing" in captured.out
     assert "1 task validation(s) failed: failing" in captured.err
+    assert ("SETUP_SESSION" in captured.err) == missing_setup
+    assert "synthetic-session" not in captured.err
 
 
-def test_run_prints_progress_summary_and_log_locations(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("missing_setup", [False, True])
+def test_run_prints_progress_summary_and_log_locations(
+    tmp_path, monkeypatch, capsys, missing_setup
+):
     benchmark = tmp_path / "benchmarks"
-    project = SimpleNamespace(benchmark_dir=benchmark)
+    project = SimpleNamespace(benchmark_dir=benchmark, setup_environment=["SETUP_SESSION"])
+    if missing_setup:
+        monkeypatch.delenv("SETUP_SESSION", raising=False)
+    else:
+        monkeypatch.setenv("SETUP_SESSION", "synthetic-session")
 
     class FakeRunner:
         def __init__(self, loaded_project):
@@ -285,16 +304,33 @@ def test_run_prints_progress_summary_and_log_locations(tmp_path, monkeypatch, ca
         )
         == 0
     )
-    output = capsys.readouterr().out
+    captured = capsys.readouterr()
+    output = captured.out
     assert "[r1] PASS · 1.2s" in output
     assert "Completed: 1/1 passed · 1.2s average" in output
     assert f"Results: {benchmark / 'results/summary.md'}" in output
     assert f"Logs: {benchmark / 'results/raw/experiment-fixture'}/" in output
+    assert ("SETUP_SESSION" in captured.err) == missing_setup
+    assert "synthetic-session" not in captured.err
 
 
-def test_run_json_preserves_machine_readable_rows(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("setup_state", ["disabled", "present", "missing"])
+def test_run_json_preserves_machine_readable_rows(tmp_path, monkeypatch, capsys, setup_state):
     benchmark = tmp_path / "benchmarks"
-    project = SimpleNamespace(benchmark_dir=benchmark)
+    project = SimpleNamespace(
+        benchmark_dir=benchmark,
+        setup_environment=(
+            [] if setup_state == "disabled"
+            else ["SETUP_TOKEN", "SETUP_REGION", "SETUP_ACCOUNT", "SETUP_OPTION"]
+        ),
+    )
+    monkeypatch.setenv("SETUP_TOKEN", "synthetic-present-secret")
+    monkeypatch.setenv("SETUP_REGION", "synthetic-region")
+    monkeypatch.setenv("SETUP_ACCOUNT", "synthetic-account")
+    monkeypatch.setenv("SETUP_OPTION", "")
+    if setup_state == "missing":
+        monkeypatch.delenv("SETUP_REGION")
+        monkeypatch.delenv("SETUP_ACCOUNT")
 
     class FakeRunner:
         def __init__(self, _project):
@@ -308,9 +344,86 @@ def test_run_json_preserves_machine_readable_rows(tmp_path, monkeypatch, capsys)
     monkeypatch.setattr(cli, "BenchmarkRunner", FakeRunner)
 
     assert cli.main(["--benchmark-dir", str(benchmark), "run", "--json"]) == 0
-    output = capsys.readouterr().out
-    assert '"configuration": "fixture"' in output
-    assert "Completed:" not in output
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["configuration"] == "fixture"
+    assert "Completed:" not in captured.out
+    if setup_state == "missing":
+        assert "SETUP_REGION" in captured.err and "SETUP_ACCOUNT" in captured.err
+        assert "SETUP_TOKEN" not in captured.err and "SETUP_OPTION" not in captured.err
+        assert "synthetic-present-secret" not in captured.err
+    else:
+        assert captured.err == ""
+
+
+@pytest.fixture
+def setup_environment_project(tmp_path, monkeypatch):
+    benchmark = scaffold(tmp_path)
+    manifest = benchmark / "benchmark.yaml"
+    data = yaml.safe_load(manifest.read_text())
+    data["setup_environment"] = ["SETUP_SESSION"]
+    manifest.write_text(yaml.safe_dump(data))
+    monkeypatch.delenv("SETUP_SESSION", raising=False)
+    return benchmark
+
+
+def test_validate_task_warns_without_suppressing_the_receipt(
+    setup_environment_project, monkeypatch, capsys
+):
+    repo = setup_environment_project.parent
+    (repo / "source.txt").write_text("base\n")
+    for arguments in (
+        ["init", "-q"],
+        ["config", "user.name", "Fixture"],
+        ["config", "user.email", "fixture@example.com"],
+        ["add", "source.txt"],
+        ["commit", "-qm", "base"],
+    ):
+        subprocess.run(["git", *arguments], cwd=repo, check=True, capture_output=True)
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+    task_root = setup_environment_project / "tasks/example"
+    task_data = yaml.safe_load((task_root / "task.yaml.example").read_text())
+    task_data.update(base_commit=commit, reference_commit=commit)
+    (task_root / "task.yaml").write_text(yaml.safe_dump(task_data))
+
+    class FakeDocker:
+        def image_id(self, _image):
+            return "sha256:" + "a" * 64
+
+    monkeypatch.setattr("agent_bench.runner.DockerEngine", FakeDocker)
+
+    status = cli.main([
+        "--benchmark-dir", str(setup_environment_project), "validate-task", "example"
+    ])
+
+    captured = capsys.readouterr()
+    assert status == 2
+    assert "SETUP_SESSION" in captured.err
+    latest = setup_environment_project / "results/validation/example/latest.json"
+    receipt = json.loads(latest.read_text())
+    assert receipt["status"] == "infrastructure_error"
+    assert receipt["base"]["setup"] == "failed"
+    assert "Receipt:" in captured.out
+
+
+@pytest.mark.parametrize("command", ["validate", "build", "doctor"])
+def test_commands_without_setup_do_not_warn_about_missing_setup_environment(
+    setup_environment_project, monkeypatch, capsys, command
+):
+    class FakeDocker:
+        def build(self, *_args):
+            pass
+
+        def server_version(self):
+            return "fixture"
+
+        def image_exists(self, _image):
+            return False
+
+    monkeypatch.setattr("agent_bench.runner.DockerEngine", FakeDocker)
+
+    cli.main(["--benchmark-dir", str(setup_environment_project), command])
+
+    assert capsys.readouterr().err == ""
 
 
 def test_run_parser_collects_repeated_configurations():
