@@ -12,7 +12,8 @@ Treat Bedrock model availability as live data. Never recommend a model ID, infer
 region from memory or from this skill's examples. When the user omits any of them, use WebFetch or
 the harness's equivalent web-retrieval tool to consult:
 
-- [OpenCode providers](https://opencode.ai/docs/providers) for its current Bedrock integration and
+- [OpenCode providers](https://opencode.ai/v2/docs/providers) for its current Bedrock integration
+  and
   authentication behavior.
 - [Amazon Bedrock models at a
   glance](https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards.html) to choose a coding-

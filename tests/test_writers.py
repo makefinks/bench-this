@@ -46,10 +46,13 @@ def test_opencode_writer_sets_provider_model_and_skill_permission(tmp_path):
     native = json.loads((config.harness_config / "opencode.json").read_text())
     assert native == {
         "$schema": "https://opencode.ai/config.json",
-        "enabled_providers": ["openai"],
-        "small_model": "openai/model-fixed",
-        "share": "disabled",
-        "permission": {"skill": {"*": "allow"}},
+        "policies": [
+            {"action": "provider.use", "resource": "*", "effect": "deny"},
+            {"action": "provider.use", "resource": "openai", "effect": "allow"},
+        ],
+        "agents": {"title": {"model": "openai/model-fixed"}},
+        "update": "disable",
+        "permissions": [{"action": "skill", "resource": "*", "effect": "allow"}],
     }
 
 
@@ -63,8 +66,8 @@ def test_opencode_writer_sets_bedrock_region(tmp_path):
     write_native_configuration(config)
 
     native = json.loads((config.harness_config / "opencode.json").read_text())
-    assert native["provider"] == {
-        "amazon-bedrock": {"options": {"region": "us-east-1"}}
+    assert native["providers"] == {
+        "amazon-bedrock": {"settings": {"region": "us-east-1"}}
     }
 
 
@@ -78,9 +81,9 @@ def test_opencode_writer_sets_fixed_copilot_business_endpoint(tmp_path):
     write_native_configuration(config)
 
     native = json.loads((config.harness_config / "opencode.json").read_text())
-    assert native["provider"] == {
+    assert native["providers"] == {
         "github-copilot": {
-            "options": {"baseURL": "https://api.business.githubcopilot.com"}
+            "settings": {"baseURL": "https://api.business.githubcopilot.com"}
         }
     }
 

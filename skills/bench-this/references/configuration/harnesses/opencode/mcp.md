@@ -3,22 +3,27 @@
 First apply the shared [MCP treatment policy](../../treatments/mcp.md). This reference owns only the
 OpenCode-native representation.
 
-OpenCode exposes every enabled MCP tool to the model and warns that large tool sets can add
-substantial context. Do not recommend a general MCP bundle as a token-saving default.
+OpenCode uses Code Mode for MCP tools by default. Set a server's `codemode` to `false` only when
+the treatment requires its tools on the provider's native tool list. MCP instructions and tool
+catalogs still consume context; select servers for the task rather than adding a general bundle.
 
 After the user approves a named MCP server and its command, network, and data-access behavior, merge
-the server into the `mcp` mapping in `harness/opencode.json`:
+the server into `mcp.servers` in `harness/opencode.json`:
 
 ```json
 {
   "mcp": {
-    "compact": {
-      "type": "local",
-      "command": ["compact-mcp"]
+    "servers": {
+      "compact": {
+        "type": "local",
+        "command": ["compact-mcp"]
+      }
     }
   }
 }
 ```
 
 The runner stages `harness/` into the disposable native configuration home. Preserve the generated
-OpenCode provider, model, sharing, and permission settings when adding its `mcp` mapping.
+OpenCode provider policies, model, and permission settings when adding `mcp.servers`. Servers
+connect unless `disabled` is `true`; timeouts are objects with `startup`, `catalog`, and `execution`
+values in milliseconds.

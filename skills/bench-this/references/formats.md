@@ -219,7 +219,7 @@ arguments: []
 ```
 
 The corresponding `harness/opencode.json` must pin the AWS region under
-`provider.amazon-bedrock.options.region`. One provider profile supplies the key as
+`providers.amazon-bedrock.settings.region`. One provider profile supplies the key as
 `AWS_BEARER_TOKEN_BEDROCK`; never put it in YAML or `opencode.json`.
 
 Every treatment manifest uses one strict flat schema. The loader rejects unknown fields, fields that

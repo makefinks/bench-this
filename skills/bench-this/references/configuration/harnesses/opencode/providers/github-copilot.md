@@ -21,7 +21,7 @@ python <skill-directory>/scripts/configure.py <repository> \
   --auth-profile copilot-auth
 ```
 
-The flag writes the fixed Business API endpoint into the provider options in
+The flag writes the fixed Business API endpoint into `providers.github-copilot.settings.baseURL` in
 `harness/opencode.json`. It is valid only with the OpenCode `github-copilot` provider; the generator
 does not accept an agent-selected base URL.
 

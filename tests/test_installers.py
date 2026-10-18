@@ -3,38 +3,74 @@ from types import SimpleNamespace
 
 import pytest
 
+from agent_bench.catalog import HARNESS_CATALOG
 from agent_bench.installers import render_dockerfile, render_harness_installs
 from agent_bench.models import Defaults, ImageConfig, ProjectConfig
 from agent_bench.runner import BenchmarkRunner
 
 
+@pytest.mark.parametrize("harness", HARNESS_CATALOG.values(), ids=lambda item: item.id)
+def test_render_preserves_catalog_pins_and_commands(harness):
+    block = render_harness_installs([harness.id])
+
+    for name, version in harness.installer.arguments.items():
+        assert f"ARG {name}={version}\n" in block
+    for command in harness.installer.commands:
+        assert command in block
+
+
 def test_render_omp_installs_only_omp_dependencies():
     block = render_harness_installs(["omp"])
-    assert "ARG BUN_VERSION=1.4.2" in block
+    version = HARNESS_CATALOG["omp"].installer.arguments["BUN_VERSION"]
+    assert f"ARG BUN_VERSION={version}" in block
     assert "@oh-my-pi/pi-coding-agent@${OMP_VERSION}" in block
-    assert "opencode-ai" not in block
+    assert "@opencode/cli" not in block
     assert "@github/copilot" not in block
 
 
-def test_render_pi_installs_pinned_upstream_package_and_mcp_adapter():
+def test_render_pi_installs_upstream_with_native_mcp_and_no_external_adapter():
     block = render_harness_installs(["pi"])
-    assert "ARG PI_VERSION=0.85.0" in block
-    assert "ARG PI_MCP_ADAPTER_VERSION=2.32.1" in block
+    versions = HARNESS_CATALOG["pi"].installer.arguments
+    assert f"ARG PI_VERSION={versions['PI_VERSION']}" in block
     assert (
         'npm install --global --ignore-scripts '
         '"@earendil-works/pi-coding-agent@${PI_VERSION}"'
     ) in block
-    assert (
-        'npm install --prefix /opt/pi-mcp-adapter --ignore-scripts '
-        '"pi-mcp-adapter@${PI_MCP_ADAPTER_VERSION}"'
-    ) in block
+    assert "PI_MCP_ADAPTER_VERSION" not in block
+    assert "pi-mcp-adapter" not in block
     assert "@oh-my-pi/pi-coding-agent" not in block
+
+
+def test_render_opencode_installs_v2_package_with_native_binary_postinstall():
+    block = render_harness_installs(["opencode"])
+
+    assert 'npm install --global "@opencode/cli@${OPENCODE_VERSION}"' in block
+    assert block.index("npm uninstall --global opencode-ai") < block.index(
+        'npm install --global "@opencode/cli'
+    )
+    assert 'npm install --global "opencode-ai' not in block
+    assert "--ignore-scripts" not in block
 
 
 def test_render_combines_selected_harnesses_deterministically():
     block = render_harness_installs(["omp", "opencode", "omp"])
-    assert block.index("@oh-my-pi/pi-coding-agent") < block.index("opencode-ai")
+    assert block.index("@oh-my-pi/pi-coding-agent") < block.index("@opencode/cli")
     assert block.count("ARG BUN_VERSION") == 1
+
+
+def test_render_all_harnesses_shares_runtime_pins_without_dropping_installers():
+    block = render_harness_installs(HARNESS_CATALOG)
+    arguments = {
+        name
+        for harness in HARNESS_CATALOG.values()
+        for name in harness.installer.arguments
+    }
+
+    for name in arguments:
+        assert block.count(f"ARG {name}=") == 1
+    for harness in HARNESS_CATALOG.values():
+        for command in harness.installer.commands:
+            assert command in block
 
 
 def test_render_rejects_unknown_harness():
@@ -105,5 +141,5 @@ def test_build_passes_rendered_dockerfile_to_engine(tmp_path: Path, monkeypatch)
     BenchmarkRunner(project, docker=engine).build()
 
     assert "@oh-my-pi/pi-coding-agent@${OMP_VERSION}" in engine.rendered
-    assert "opencode-ai" not in engine.rendered
+    assert "@opencode/cli" not in engine.rendered
     assert engine.context == tmp_path

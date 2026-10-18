@@ -53,8 +53,11 @@ def test_creates_minimal_openai_configuration(tmp_path: Path) -> None:
     assert "model: gpt-5.4-mini" in (root / "configuration.yaml").read_text()
     assert load_configuration(root / "configuration.yaml").agent == "build"
     config = json.loads((root / "harness/opencode.json").read_text())
-    assert config["small_model"] == "openai/gpt-5.4-mini"
-    assert config["enabled_providers"] == ["openai"]
+    assert config["agents"]["title"]["model"] == "openai/gpt-5.4-mini"
+    assert config["policies"] == [
+        {"action": "provider.use", "resource": "*", "effect": "deny"},
+        {"action": "provider.use", "resource": "openai", "effect": "allow"},
+    ]
     assert list((root / "workspace").iterdir()) == []
 
 
@@ -95,8 +98,10 @@ def test_creates_opencode_go_configuration(tmp_path: Path) -> None:
     root = repository / "benchmarks/configurations/opencode-opencode-go-glm-5-2"
     assert "provider: opencode-go" in (root / "configuration.yaml").read_text()
     config = json.loads((root / "harness/opencode.json").read_text())
-    assert config["small_model"] == "opencode-go/glm-5.2"
-    assert config["enabled_providers"] == ["opencode-go"]
+    assert config["agents"]["title"]["model"] == "opencode-go/glm-5.2"
+    assert config["policies"][-1] == {
+        "action": "provider.use", "resource": "opencode-go", "effect": "allow"
+    }
 
 
 def test_creates_opencode_zen_configuration(tmp_path: Path) -> None:
@@ -117,8 +122,10 @@ def test_creates_opencode_zen_configuration(tmp_path: Path) -> None:
     manifest = (root / "configuration.yaml").read_text()
     assert "provider: opencode" in manifest
     config = json.loads((root / "harness/opencode.json").read_text())
-    assert config["small_model"] == "opencode/deepseek-v4-flash-free"
-    assert config["enabled_providers"] == ["opencode"]
+    assert config["agents"]["title"]["model"] == "opencode/deepseek-v4-flash-free"
+    assert config["policies"][-1] == {
+        "action": "provider.use", "resource": "opencode", "effect": "allow"
+    }
 
 
 def test_creates_openrouter_configuration_with_provider_model_id(tmp_path: Path) -> None:
@@ -142,9 +149,11 @@ def test_creates_openrouter_configuration_with_provider_model_id(tmp_path: Path)
     runtime = load_configuration(root / "configuration.yaml")
     assert runtime.qualified_model == "openrouter/anthropic/claude-sonnet-4.6"
     native = json.loads((root / "harness/opencode.json").read_text())
-    assert native["enabled_providers"] == ["openrouter"]
-    assert native["small_model"] == runtime.qualified_model
-    assert "provider" not in native
+    assert native["policies"][-1] == {
+        "action": "provider.use", "resource": "openrouter", "effect": "allow"
+    }
+    assert native["agents"]["title"]["model"] == runtime.qualified_model
+    assert "providers" not in native
 
 
 @pytest.mark.parametrize("harness", ["omp", "pi"])
@@ -200,9 +209,11 @@ def test_creates_amazon_bedrock_configuration(tmp_path: Path) -> None:
     assert "region: eu-central-1" in (root / "configuration.yaml").read_text()
     assert load_configuration(root / "configuration.yaml").region == "eu-central-1"
     config = json.loads((root / "harness/opencode.json").read_text())
-    assert config["enabled_providers"] == ["amazon-bedrock"]
-    assert config["provider"] == {
-        "amazon-bedrock": {"options": {"region": "eu-central-1"}}
+    assert config["policies"][-1] == {
+        "action": "provider.use", "resource": "amazon-bedrock", "effect": "allow"
+    }
+    assert config["providers"] == {
+        "amazon-bedrock": {"settings": {"region": "eu-central-1"}}
     }
 
 
@@ -278,9 +289,9 @@ def test_creates_github_copilot_business_configuration(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     root = repository / "benchmarks/configurations/opencode-github-copilot-gpt-5-4-mini"
     config = json.loads((root / "harness/opencode.json").read_text())
-    assert config["provider"] == {
+    assert config["providers"] == {
         "github-copilot": {
-            "options": {"baseURL": "https://api.business.githubcopilot.com"}
+            "settings": {"baseURL": "https://api.business.githubcopilot.com"}
         }
     }
 
@@ -565,7 +576,7 @@ def test_copies_approved_skill_for_opencode(tmp_path: Path) -> None:
     root = repository / "benchmarks/configurations/opencode-openai-gpt-5-4-mini-ponytail"
     assert (root / "workspace/.agents/skills/ponytail/SKILL.md").is_file()
     config = json.loads((root / "harness/opencode.json").read_text())
-    assert config["permission"]["skill"]["*"] == "allow"
+    assert {"action": "skill", "resource": "*", "effect": "allow"} in config["permissions"]
     assert "instructions" not in config
 
 

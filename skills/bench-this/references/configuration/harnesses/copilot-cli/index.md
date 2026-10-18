@@ -26,6 +26,9 @@ For OpenRouter BYOK, also read the
 and a pinned model.
 
 Local skills work with both paths. The command refuses to overwrite an existing configuration.
+The runner disables built-in GitHub MCP servers, remote control, and remote session export. Tool
+auto-approval does not implicitly trust repository hooks or plugins; approved local skills remain
+available.
 
 ## GitHub Copilot authentication
 
@@ -36,8 +39,9 @@ runner command without a provider argument:
 ./benchmarks/run.py auth login --harness copilot --profile copilot
 ```
 
-Tell the user to run this interactive command in a real terminal and choose the headless or
-device-code option. A device-code URL may be opened in the host browser, but callback-based browser
+Tell the user to run this interactive command in a real terminal. Copilot defaults to device-code
+login in a headless environment. A device-code URL may be opened in the host browser, but
+callback-based browser
 login cannot return to the isolated container. The pinned Copilot executable runs in the benchmark
 image. You should not drive its TTY or handle passwords, device codes, or provider responses.
 

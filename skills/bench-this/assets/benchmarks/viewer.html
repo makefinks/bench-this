@@ -1260,12 +1260,9 @@
             return `<g class="frontier-mark" tabindex="0" aria-label="${escapeHtml(detail)}"><circle class="frontier-point ${pareto.has(stat.name) ? "pareto" : ""}" cx="${pointX}" cy="${pointY}" r="8" fill="${stat.color}"></circle><text class="frontier-index" x="${pointX}" y="${pointY}">${index + 1}</text></g>`;
           })
           .join("");
-        const labels = stats.map((stat) => {
-          const label = stat.configuration.length > 28
-            ? `${stat.configuration.slice(0, 27)}…`
-            : stat.configuration;
-          return `<text class="frontier-point-label" data-key="${escapeHtml(stat.name)}" x="0" y="0">${escapeHtml(label)}</text>`;
-        }).join("");
+        const labels = stats.map((stat) =>
+          `<text class="frontier-point-label" data-key="${escapeHtml(stat.name)}" x="0" y="0">${escapeHtml(stat.configuration)}</text>`,
+        ).join("");
         const links = stats.map(() => '<line class="frontier-label-link" style="display:none"/>').join("");
         const legend = stats
           .map(

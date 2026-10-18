@@ -16,7 +16,7 @@ python <skill-directory>/scripts/configure.py <repository> \
 ```
 
 The generated OpenCode configuration enables only OpenRouter and qualifies the selected model as
-`openrouter/anthropic/claude-sonnet-4.6`. It uses the same value for `small_model`.
+`openrouter/anthropic/claude-sonnet-4.6`. It uses the same value for `agents.title.model`.
 
 ## Authentication
 

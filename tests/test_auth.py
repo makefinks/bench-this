@@ -9,7 +9,7 @@ import pytest
 from agent_bench.auth import (
     PROVIDER_CREDENTIALS_FILE,
     OMP_NATIVE_DATABASE,
-    OPENCODE_AUTH_FILE,
+    OPENCODE_NATIVE_DATABASE,
     PI_AUTH_FILE,
     auth_strategy_for,
     login,
@@ -44,30 +44,34 @@ def write_omp_auth_database(path, provider):
         )
 
 
+def write_opencode_auth_database(path, provider):
+    path.parent.mkdir(parents=True)
+    with sqlite3.connect(path) as connection:
+        connection.execute("CREATE TABLE credential (integration_id TEXT, active INTEGER, value TEXT)")
+        connection.execute(
+            "INSERT INTO credential VALUES (?, 1, ?)",
+            (provider, json.dumps({"type": "oauth", "access": "fixture"})),
+        )
+        for table in ("account", "session_v2", "session_message", "session_inbox", "session_pending"):
+            connection.execute(f"CREATE TABLE {table} (id TEXT)")
+
+
 def test_narrow_opencode_profile_removes_unrelated_state(tmp_path):
     """Keep only the selected provider while deleting caches and plugin symlinks."""
 
     profile = tmp_path / "profile"
-    auth = profile / ".local/share/opencode/auth.json"
-    auth.parent.mkdir(parents=True)
-    auth.write_text(
-        json.dumps(
-            {
-                "openai": {"type": "oauth", "access": "fixture"},
-                "github-copilot": {"type": "oauth", "access": "unrelated"},
-            }
-        ),
-        encoding="utf-8",
-    )
+    auth = profile / OPENCODE_NATIVE_DATABASE
+    write_opencode_auth_database(auth, "openai")
     plugin = profile / ".config/opencode/node_modules/.bin/plugin"
     plugin.parent.mkdir(parents=True)
     plugin.symlink_to("../plugin/index.js")
 
     narrow_opencode_profile(profile, "openai")
 
-    assert json.loads(auth.read_text(encoding="utf-8")) == {
-        "openai": {"type": "oauth", "access": "fixture"}
-    }
+    with sqlite3.connect(auth) as connection:
+        assert connection.execute("SELECT integration_id, active FROM credential").fetchall() == [
+            ("openai", 1)
+        ]
     assert not (profile / ".config").exists()
 
 
@@ -75,9 +79,8 @@ def test_validate_opencode_profile_rejects_login_state(tmp_path):
     """Doctor should identify profiles broadened by an unsafe writable-home diagnostic."""
 
     profile = tmp_path / "auth/personal/opencode"
-    auth = profile / ".local/share/opencode/auth.json"
-    auth.parent.mkdir(parents=True)
-    auth.write_text(json.dumps({"openai": {"type": "oauth"}}), encoding="utf-8")
+    auth = profile / OPENCODE_NATIVE_DATABASE
+    write_opencode_auth_database(auth, "openai")
     cache = profile / ".cache/opencode/state"
     cache.parent.mkdir(parents=True)
     cache.write_text("unexpected", encoding="utf-8")
@@ -96,6 +99,74 @@ def test_validate_opencode_profile_rejects_login_state(tmp_path):
 
     with pytest.raises(ConfigurationError, match="unexpected files"):
         validate_auth_profile(config, tmp_path / "auth")
+
+
+def opencode_profile(tmp_path):
+    config = TreatmentConfig(**{
+        **bedrock_config(tmp_path).__dict__, "provider": "openai", "region": None,
+        "auth_profile": "personal",
+    })
+    profile = tmp_path / "auth/personal/opencode"
+    write_opencode_auth_database(profile / OPENCODE_NATIVE_DATABASE, "openai")
+    return config, profile
+
+
+def test_opencode_stages_only_source_free_native_database(tmp_path):
+    config, profile = opencode_profile(tmp_path)
+
+    prepared = prepare_home(config, tmp_path / "home", tmp_path / "auth")
+
+    staged = prepared.home / OPENCODE_NATIVE_DATABASE
+    assert staged.read_bytes() == (profile / OPENCODE_NATIVE_DATABASE).read_bytes()
+    assert not (staged.parent / "auth.json").exists()
+
+
+@pytest.mark.parametrize("mutation", [
+    "UPDATE credential SET integration_id='unrelated'",
+    "UPDATE credential SET active=0",
+    "UPDATE credential SET value='invalid-json'",
+    "INSERT INTO credential VALUES ('unrelated', 1, '{}')",
+    "INSERT INTO account VALUES ('console-account')",
+    "INSERT INTO session_v2 VALUES ('private-session')",
+    "INSERT INTO session_message VALUES ('private-message')",
+    "INSERT INTO session_inbox VALUES ('private-inbox')",
+    "INSERT INTO session_pending VALUES ('private-prompt')",
+])
+def test_opencode_rejects_broadened_or_corrupt_native_profiles(tmp_path, mutation):
+    config, profile = opencode_profile(tmp_path)
+    with sqlite3.connect(profile / OPENCODE_NATIVE_DATABASE) as connection:
+        connection.execute(mutation)
+
+    with pytest.raises(ConfigurationError):
+        validate_auth_profile(config, tmp_path / "auth")
+
+
+def test_opencode_json_only_profile_requires_native_database_login(tmp_path):
+    config, profile = opencode_profile(tmp_path)
+    (profile / OPENCODE_NATIVE_DATABASE).unlink()
+    (profile / ".local/share/opencode/auth.json").write_text('{"openai":{"type":"oauth"}}')
+
+    with pytest.raises(ConfigurationError, match="auth login"):
+        validate_auth_profile(config, tmp_path / "auth")
+
+
+def test_opencode_login_snapshots_uncheckpointed_wal(tmp_path):
+    _, profile = opencode_profile(tmp_path)
+    connection = sqlite3.connect(profile / OPENCODE_NATIVE_DATABASE)
+    try:
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("UPDATE credential SET value=?", (json.dumps({"type": "key", "key": "new"}),))
+        connection.commit()
+
+        narrow_opencode_profile(profile, "openai")
+
+        with sqlite3.connect(profile / OPENCODE_NATIVE_DATABASE) as snapshot:
+            assert json.loads(snapshot.execute("SELECT value FROM credential").fetchone()[0])["key"] == "new"
+        assert sorted(path.relative_to(profile) for path in profile.rglob("*") if path.is_file()) == [
+            OPENCODE_NATIVE_DATABASE
+        ]
+    finally:
+        connection.close()
 
 
 def bedrock_config(tmp_path):
@@ -232,6 +303,55 @@ def test_pi_family_openrouter_auth_injects_shared_key_without_staging(tmp_path, 
         "OPENROUTER_API_KEY": "fixture-token"
     }
     assert list(prepared.home.rglob(PROVIDER_CREDENTIALS_FILE.name)) == []
+
+
+def test_pi_stages_native_mcp_configuration_without_extension_settings(tmp_path):
+    auth_root = tmp_path / "auth"
+    set_provider_api_key("native-mcp", "openrouter", "fixture-token", auth_root)
+    config = TreatmentConfig(
+        **{
+            **bedrock_config(tmp_path).__dict__,
+            "harness": "pi",
+            "provider": "openrouter",
+            "agent": None,
+            "region": None,
+            "auth_profile": "native-mcp",
+        }
+    )
+    native = {
+        "mcpServers": {
+            "fixture": {"command": "fixture-mcp", "args": [], "exposure": "direct"}
+        }
+    }
+    (config.harness_config / "mcp.json").write_text(json.dumps(native))
+
+    prepared = prepare_home(config, tmp_path / "home", auth_root)
+
+    agent_dir = prepared.home / ".pi/agent"
+    assert json.loads((agent_dir / "mcp.json").read_text()) == native
+    assert not (agent_dir / "settings.json").exists()
+
+
+@pytest.mark.parametrize("harness", ["opencode", "omp", "pi"])
+def test_mcp_launchers_stage_with_native_home_without_project_assets(tmp_path, harness):
+    auth_root = tmp_path / "auth"
+    set_provider_api_key("mcp", "openrouter", "fixture-token", auth_root)
+    config = TreatmentConfig(**{
+        **bedrock_config(tmp_path).__dict__, "harness": harness, "provider": "openrouter",
+        "agent": "build" if harness == "opencode" else None, "region": None,
+        "auth_profile": "mcp",
+    })
+    launcher = config.harness_config / "launch-mcp.sh"
+    launcher.write_text("#!/bin/sh\nexit 0\n")
+    launcher.chmod(0o755)
+    (config.workspace_config / "project-only.sh").write_text("project source\n")
+
+    prepared = prepare_home(config, tmp_path / "home", auth_root)
+
+    staged = prepared.home / config.harness_spec.config_home / "launch-mcp.sh"
+    assert staged.read_text() == launcher.read_text()
+    assert staged.stat().st_mode & 0o111
+    assert not list(prepared.home.rglob("project-only.sh"))
 
 
 def test_bedrock_provider_profile_rejects_broadened_or_invalid_credentials(tmp_path):
@@ -489,7 +609,7 @@ def test_pi_login_runs_pinned_cli_in_temporary_home_and_replaces_profile(tmp_pat
 @pytest.mark.parametrize(
     "harness,provider,command,artifact",
     [
-        ("opencode", "openai", ["opencode", "auth", "login", "--provider", "openai"], OPENCODE_AUTH_FILE),
+        ("opencode", "openai", ["opencode", "auth", "login", "--standalone", "openai"], OPENCODE_NATIVE_DATABASE),
         ("omp", "openai-codex", ["omp"], OMP_NATIVE_DATABASE),
         ("copilot", None, ["copilot"], Path(".copilot/token.json")),
     ],
@@ -507,9 +627,7 @@ def test_cli_logins_retain_only_their_credential_artifact(
 
     def populate(home):
         if harness == "opencode":
-            path = home / OPENCODE_AUTH_FILE
-            path.parent.mkdir(parents=True)
-            path.write_text(json.dumps({provider: {"type": "oauth"}}), encoding="utf-8")
+            write_opencode_auth_database(home / OPENCODE_NATIVE_DATABASE, provider)
         elif harness == "omp":
             write_omp_auth_database(home / OMP_NATIVE_DATABASE, provider)
         else:

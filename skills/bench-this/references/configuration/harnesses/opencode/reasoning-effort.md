@@ -4,7 +4,9 @@ First apply the shared [reasoning-effort treatment policy](../../treatments/reas
 This
 reference owns only the native OpenCode controls.
 
-Pass OpenCode's native model variant through `arguments`:
+Use OpenCode's full `provider/model#variant` selector through `arguments`. Keep the manifest's
+`model`
+as the base model ID so pricing and identity checks retain the same pin:
 
 ```yaml
 id: opencode-openai-gpt-5-4-mini-high
@@ -16,7 +18,7 @@ harness_config: harness
 workspace_config: workspace
 auth_profile: openai
 arguments:
-  - --variant=high
+  - --model=openai/gpt-5.4-mini#high
 ```
 
 OpenCode variants are provider- and model-specific. Common names include `none`, `minimal`, `low`,
@@ -25,24 +27,22 @@ Never infer variant support from another provider or model. In particular, do no
 OpenCode Go model accepts the variants used by an OpenAI model.
 
 When a built-in variant does not express the intended settings, define a named custom variant in
-`harness/opencode.json` and select that exact name with `--variant`. Preserve the generated
-`enabled_providers`, `small_model`, sharing, and permission settings. For example:
+`harness/opencode.json` and select `openai/gpt-5.4-mini#benchmark-high` through `arguments`. Merge
+the following provider
+entry into the generated file, preserving its provider policies, title model, and permissions:
 
 ```json
 {
-  "$schema": "https://opencode.ai/config.json",
-  "enabled_providers": ["openai"],
-  "small_model": "openai/gpt-5.4-mini",
-  "share": "disabled",
-  "provider": {
+  "providers": {
     "openai": {
       "models": {
         "gpt-5.4-mini": {
-          "variants": {
-            "benchmark-high": {
-              "reasoningEffort": "high"
+          "variants": [
+            {
+              "id": "benchmark-high",
+              "settings": {"reasoningEffort": "high"}
             }
-          }
+          ]
         }
       }
     }
@@ -56,5 +56,9 @@ pinned provider and model; otherwise use a supported built-in variant.
 Check the installed CLI's model inventory because accepted variants can change:
 
 ```bash
-opencode models <provider> --verbose
+opencode models --standalone
+opencode api --standalone get /api/model
 ```
+
+The API form exposes structured model definitions, including variants. Inspect the selected
+provider and model.

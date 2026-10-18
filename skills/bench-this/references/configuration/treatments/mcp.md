@@ -13,6 +13,9 @@ provide a configuration file. Follow the selected harness's native instructions:
 - [Oh My Pi MCP configuration](../harnesses/omp/mcp.md)
 - [Pi MCP configuration](../harnesses/pi/mcp.md)
 
+Install required MCP dependencies in the benchmark image through its Dockerfile, and configure the
+server through the harness's native configuration.
+
 Never put credentials in benchmark files. Do not configure a credentialed MCP server unless the
 runner has an explicit, benchmark-safe mechanism for supplying those credentials. Keep the baseline
 MCP-free, use a distinct configuration ID, run `doctor`, and compare correctness plus input, output,

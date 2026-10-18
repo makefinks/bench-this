@@ -31,29 +31,34 @@ class NoOpWriter(NativeConfigurationWriter):
 
 
 class OpenCodeWriter(NativeConfigurationWriter):
-    """Render the complete OpenCode-native provider and permission policy."""
+    """Render native OpenCode provider, auxiliary-model, and permission policy."""
 
     def write(self, config: TreatmentConfig, skill_names: Iterable[str]) -> None:
         opencode: dict[str, object] = {
             "$schema": "https://opencode.ai/config.json",
-            "enabled_providers": [config.provider],
-            "small_model": config.qualified_model,
-            "share": "disabled",
+            "policies": [
+                {"action": "provider.use", "resource": "*", "effect": "deny"},
+                {"action": "provider.use", "resource": config.provider, "effect": "allow"},
+            ],
+            "agents": {"title": {"model": config.qualified_model}},
+            "update": "disable",
         }
         if config.github_copilot_business:
-            opencode["provider"] = {
+            opencode["providers"] = {
                 "github-copilot": {
-                    "options": {"baseURL": GITHUB_COPILOT_BUSINESS_BASE_URL}
+                    "settings": {"baseURL": GITHUB_COPILOT_BUSINESS_BASE_URL}
                 }
             }
         elif config.provider == AMAZON_BEDROCK_PROVIDER:
-            opencode["provider"] = {
+            opencode["providers"] = {
                 AMAZON_BEDROCK_PROVIDER: {
-                    "options": {"region": config.region}
+                    "settings": {"region": config.region}
                 }
             }
         if tuple(skill_names):
-            opencode["permission"] = {"skill": {"*": "allow"}}
+            opencode["permissions"] = [
+                {"action": "skill", "resource": "*", "effect": "allow"}
+            ]
         destination = config.harness_config / "opencode.json"
         destination.write_text(
             json.dumps(opencode, indent=2) + "\n",

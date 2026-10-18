@@ -1,4 +1,11 @@
-from agent_bench.telemetry import extract_identity, parse_pi_transcript, parse_usage
+import json
+
+from agent_bench.telemetry import (
+    extract_identity,
+    parse_opencode_transcript,
+    parse_pi_transcript,
+    parse_usage,
+)
 
 
 def test_copilot_otel_fixture_parses_tokens_and_native_cost():
@@ -41,6 +48,54 @@ def test_opencode_info_log_exposes_resolved_identity():
         "session.id=fixture small=false agent=build\n"
     )
     assert extract_identity(raw) == ("openai", "gpt-5.4-mini")
+
+
+def test_opencode_v2_nested_model_reference_exposes_resolved_identity():
+    raw = (
+        '{"type":"assistant","model":{"providerID":"fixture-provider",'
+        '"id":"fixture-model","variant":"high"}}'
+    )
+
+    assert extract_identity(raw) == ("fixture-provider", "fixture-model")
+
+
+def test_arbitrary_ids_are_not_resolved_model_identities():
+    raw = '{"type":"assistant","id":"message-1","model":{"id":"unqualified"}}'
+
+    assert extract_identity(raw) == (None, None)
+
+
+def test_opencode_export_counts_assistants_once_without_aggregate_or_tool_metadata():
+    message = {
+        "id": "assistant-1", "type": "assistant", "finish": "stop",
+        "time": {"completed": 2},
+        "tokens": {"input": 10, "output": 4, "reasoning": 2, "cache": {"read": 3, "write": 1}},
+        "cost": 0.25,
+        "content": [{"type": "tool", "state": {"metadata": {"tokens": {"input": 999}}}}],
+    }
+    record = json.dumps({"type": "bench_opencode_message", "message": message})
+    raw = json.dumps({"type": "text", "part": {"tokens": {"input": 1000}}})
+
+    usage = parse_opencode_transcript("\n".join([raw, record, record]))
+
+    assert (usage.input_tokens, usage.output_tokens, usage.reasoning_tokens) == (10, 4, 2)
+    assert (usage.cache_read_tokens, usage.cache_write_tokens) == (3, 1)
+    assert usage.native_cost_usd == 0.25
+    assert usage.turns == 1
+
+
+def test_opencode_export_does_not_count_incomplete_or_failed_steps():
+    records = [
+        {"id": "incomplete", "type": "assistant", "time": {}, "tokens": {"input": 3}},
+        {"id": "failed", "type": "assistant", "time": {"completed": 2},
+         "finish": "error", "tokens": {"input": 4}},
+    ]
+    raw = "\n".join(json.dumps({"type": "bench_opencode_message", "message": item}) for item in records)
+
+    usage = parse_opencode_transcript(raw)
+
+    assert usage.input_tokens == 7
+    assert usage.turns == 0
 
 
 def test_omp_camelcase_cache_fields_parse_without_triple_counting():

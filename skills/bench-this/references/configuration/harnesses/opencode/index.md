@@ -6,8 +6,7 @@ identifies one.
 
 ## Generate the baseline
 
-The generator defaults to OpenCode for backwards compatibility. Use an explicit provider, pinned
-model, and benchmark-owned authentication profile:
+Use an explicit provider, pinned model, and benchmark-owned authentication profile:
 
 ```bash
 python <skill-directory>/scripts/configure.py <repository> \
@@ -17,8 +16,9 @@ python <skill-directory>/scripts/configure.py <repository> \
   --auth-profile openai
 ```
 
-For OpenCode, the generated configuration pins the provider-qualified model, pins `small_model` to
-the same model, disables sharing, and leaves the treatment workspace empty. The command refuses to
+The generated OpenCode configuration restricts provider use through `policies`, pins
+`agents.title.model` to the selected model, and disables updates. Each preflight and solver
+invocation uses a private server. The treatment workspace starts empty, and the command refuses to
 overwrite an existing configuration.
 
 OpenCode Go is also supported. Generate an active configuration with:
@@ -69,6 +69,10 @@ Tell the user to run this interactive command in a real terminal and choose the 
 device-code option. A device-code URL may be opened in the host browser, but callback-based browser
 login cannot return to the isolated container. The pinned OpenCode executable runs in the benchmark
 image. You should not drive its TTY or handle passwords, device codes, or provider responses.
+
+The runner retains a checkpointed, source-free `opencode.db` snapshot containing only the selected
+active credential and no conversation state. Leave the user's ordinary OpenCode database and shared
+service alone.
 
 After a newly completed login, verify only the matching profile and harness:
 

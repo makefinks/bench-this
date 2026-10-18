@@ -1,4 +1,4 @@
-"""Normalize heterogeneous JSONL and OpenTelemetry output from both harnesses."""
+"""Normalize heterogeneous JSONL and OpenTelemetry output from supported harnesses."""
 
 import json
 import re
@@ -130,7 +130,7 @@ def _generic_turns(events: List[Any]) -> Optional[int]:
                 opencode_seen = True
             if event_type == "step_finish":
                 opencode_turns += 1
-            # OTel metric events (e.g. gen_ai.client.token.usage) carry nested
+            # OTel metric events carry nested
             # dataPoint attributes with operation.name="chat" but are histogram
             # annotations, not chats. Non-chat spans are not turns either.
             if event_type == "metric":
@@ -324,6 +324,36 @@ def parse_pi_transcript(text: str) -> Usage:
     )
 
 
+def parse_opencode_transcript(text: str) -> Usage:
+    """Read wrapper-emitted assistant steps, excluding summary and tool metadata."""
+
+    messages = {}
+    for event in parse_json_events(text):
+        if not isinstance(event, dict) or event.get("type") != "bench_opencode_message":
+            continue
+        message = event.get("message")
+        if isinstance(message, dict) and message.get("type") == "assistant":
+            message_id = message.get("id")
+            key = message_id if isinstance(message_id, str) else len(messages)
+            messages[key] = message
+    if not messages:
+        return parse_usage(text)
+    measurements = []
+    for message in messages.values():
+        timing = message.get("time")
+        completed = (
+            isinstance(timing, dict)
+            and timing.get("completed") is not None
+            and message.get("finish") not in {None, "error"}
+        )
+        measurements.append(json.dumps({
+            "type": "step_finish" if completed else "step_start",
+            "tokens": message.get("tokens"),
+            "cost": message.get("cost"),
+        }))
+    return parse_usage("\n".join(measurements))
+
+
 def extract_identities(text: str) -> List[Tuple[Optional[str], str]]:
     """Collect resolved identities from JSON events and OpenCode stream logs."""
 
@@ -339,6 +369,12 @@ def extract_identities(text: str) -> List[Tuple[Optional[str], str]]:
     }
     for event in parse_json_events(text):
         for mapping in _walk(event):
+            reference = mapping.get("model")
+            if isinstance(reference, dict):
+                provider = reference.get("providerID")
+                model = reference.get("id")
+                if isinstance(provider, str) and isinstance(model, str):
+                    identities.append((provider, model))
             provider = model = None
             for key, value in mapping.items():
                 if key in provider_keys and isinstance(value, str):
@@ -348,8 +384,7 @@ def extract_identities(text: str) -> List[Tuple[Optional[str], str]]:
             if model is not None:
                 identities.append((provider, model))
 
-    # OpenCode's raw JSON events omit identity, while its INFO stream lines
-    # report every main and auxiliary model call in a stable key=value form.
+    # INFO stream logs report main and auxiliary model identities in key=value form.
     for line in text.splitlines():
         if "message=stream" not in line:
             continue

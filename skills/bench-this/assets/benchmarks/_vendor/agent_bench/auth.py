@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from contextlib import closing
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -37,7 +38,7 @@ PROVIDER_CREDENTIALS_FILE = Path("credentials.json")
 API_KEY_FIELD = "api_key"
 OMP_NATIVE_DATABASE = Path(".omp/agent/agent.db")
 PI_AUTH_FILE = Path(".pi/agent/auth.json")
-OPENCODE_AUTH_FILE = Path(".local/share/opencode/auth.json")
+OPENCODE_NATIVE_DATABASE = Path(".local/share/opencode/opencode.db")
 
 
 @dataclass(frozen=True)
@@ -341,20 +342,41 @@ def _write_only_profile_file(
 
 
 def narrow_opencode_profile(destination: Path, provider: str) -> None:
-    """Retain only one selected OpenCode credential after interactive login."""
+    """Snapshot a source-free OpenCode login, including credentials still in its WAL."""
 
-    auth_path = destination / OPENCODE_AUTH_FILE
+    database = destination / OPENCODE_NATIVE_DATABASE
     try:
-        credentials = json.loads(auth_path.read_text(encoding="utf-8"))
-        selected = credentials[provider]
-        if not isinstance(selected, dict):
-            raise TypeError
-    except (FileNotFoundError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            snapshot = Path(temporary_directory) / "opencode.db"
+            with (
+                closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)) as source,
+                closing(sqlite3.connect(snapshot)) as target,
+            ):
+                source.backup(target)
+            with closing(sqlite3.connect(snapshot)) as connection:
+                connection.execute("PRAGMA journal_mode=DELETE")
+                _validate_opencode_database(connection, provider)
+            content = snapshot.read_bytes()
+    except (OSError, sqlite3.Error, ValueError, TypeError) as exc:
         raise InfrastructureError(
-            f"OpenCode login did not create a valid {provider!r} credential"
+            f"OpenCode login did not create only an active {provider!r} credential "
+            "in a source-free OpenCode database"
         ) from exc
-    content = (json.dumps({provider: selected}, separators=(",", ":")) + "\n").encode()
-    _write_only_profile_file(destination, OPENCODE_AUTH_FILE, content)
+    _write_only_profile_file(destination, OPENCODE_NATIVE_DATABASE, content)
+
+
+def _validate_opencode_database(connection: sqlite3.Connection, provider: str) -> None:
+    """Reject unrelated accounts and conversation state rather than editing account tables."""
+
+    rows = connection.execute("SELECT integration_id, active, value FROM credential").fetchall()
+    if len(rows) != 1 or rows[0][:2] != (provider, 1):
+        raise ValueError("unexpected provider credentials")
+    credential = json.loads(rows[0][2])
+    if not isinstance(credential, dict) or credential.get("type") not in {"oauth", "key"}:
+        raise ValueError("invalid credential value")
+    for table in ("account", "session_v2", "session_message", "session_inbox", "session_pending"):
+        if connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]:
+            raise ValueError("unrelated account or conversation state in authentication profile")
 
 
 def _narrow_pi_profile(profile: Path, provider: str) -> None:
@@ -447,42 +469,40 @@ class OpenCodeProviderAuth(AuthStrategy):
         return _interactive_profile_login(
             destination,
             project.image.name,
-            ["opencode", "auth", "login", "--provider", provider.id],
-            {"HOME": "/home/bench"},
+            ["opencode", "auth", "login", "--standalone", provider.id],
+            {
+                "HOME": "/home/bench",
+                "XDG_CONFIG_HOME": "/home/bench/.config",
+                "XDG_DATA_HOME": "/home/bench/.local/share",
+                "XDG_CACHE_HOME": "/home/bench/.cache",
+                "XDG_STATE_HOME": "/home/bench/.local/state",
+            },
             docker,
             lambda pending: narrow_opencode_profile(pending, str(provider.id)),
         )
 
     def validate(self, config, auth_root=None):
         profile = _profile(config, auth_root)
-        if _files(profile) != [OPENCODE_AUTH_FILE]:
+        if _files(profile) != [OPENCODE_NATIVE_DATABASE]:
             raise ConfigurationError(
                 f"OpenCode auth profile contains unexpected files: {profile}; "
                 f"run `{_auth_login_command(config)}`"
             )
         try:
-            credentials = json.loads(
-                (profile / OPENCODE_AUTH_FILE).read_text(encoding="utf-8")
-            )
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            database = profile / OPENCODE_NATIVE_DATABASE
+            with closing(sqlite3.connect(
+                database.resolve().as_uri() + "?mode=ro&immutable=1", uri=True
+            )) as connection:
+                _validate_opencode_database(connection, str(config.provider))
+        except (OSError, sqlite3.Error, ValueError, TypeError) as exc:
             raise ConfigurationError(
-                f"invalid OpenCode credential file: {profile / OPENCODE_AUTH_FILE}"
+                f"OpenCode auth profile must contain only an active {config.provider!r} "
+                f"credential without conversation state; run `{_auth_login_command(config)}`"
             ) from exc
-        credential = (
-            credentials.get(config.provider) if isinstance(credentials, dict) else None
-        )
-        if (
-            not isinstance(credentials, dict)
-            or set(credentials) != {config.provider}
-            or not isinstance(credential, dict)
-        ):
-            raise ConfigurationError(
-                f"OpenCode auth profile must contain only provider {config.provider!r}"
-            )
         return ValidatedAuth(profile, MappingProxyType({}))
 
     def stage(self, config, validated, destination):
-        _stage_file(validated, destination, OPENCODE_AUTH_FILE)
+        _stage_file(validated, destination, OPENCODE_NATIVE_DATABASE)
 
 
 class OmpOAuthAuth(AuthStrategy):

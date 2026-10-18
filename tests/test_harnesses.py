@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from agent_bench.errors import IdentityMismatch, InfrastructureError
@@ -30,7 +32,15 @@ def test_copilot_command_pins_model_and_disables_remote(tmp_path):
     assert command[command.index("--model") + 1] == "gpt-fixed"
     assert "--no-ask-user" in command
     assert "--no-remote" in command
+    assert "--no-remote-export" in command
+    assert "--disable-builtin-mcps" in command
     assert "--output-format=json" in command
+
+
+def test_copilot_auto_approves_tools_without_implicitly_trusting_workspace_hooks(tmp_path):
+    environment = CopilotAdapter(config(tmp_path)).environment()
+
+    assert environment["COPILOT_ALLOW_ALL"] == "1"
 
 
 def test_copilot_bedrock_uses_mantle_responses_without_exposing_secret(tmp_path):
@@ -83,6 +93,76 @@ def test_opencode_identity_requires_provider_and_model(tmp_path):
         adapter.verify_identity('{"providerID":"openai","modelID":"gpt-fixed"}')
 
 
+def test_opencode_v2_identity_verifies_nested_provider_and_model(tmp_path):
+    adapter = OpenCodeAdapter(config(tmp_path, "opencode"))
+    response = (
+        '{"type":"assistant","model":{"providerID":"github-copilot",'
+        '"id":"gpt-fixed"}}'
+    )
+
+    assert adapter.verify_identity(response) == ("github-copilot", "gpt-fixed")
+    with pytest.raises(IdentityMismatch):
+        adapter.verify_identity(response.replace("gpt-fixed", "fallback"))
+    with pytest.raises(IdentityMismatch):
+        adapter.verify_identity(response.replace("github-copilot", "openai"))
+
+
+@pytest.mark.parametrize("method", ["verify_preflight", "verify_solver"])
+def test_opencode_v2_rejects_structured_provider_failures(tmp_path, method):
+    adapter = OpenCodeAdapter(config(tmp_path, "opencode"))
+    response = (
+        '{"message":{"type":"assistant","finish":"error",'
+        '"error":{"type":"api","message":"provider unavailable"}}}'
+    )
+
+    with pytest.raises(InfrastructureError, match="provider unavailable"):
+        getattr(adapter, method)(response)
+
+
+def test_opencode_v2_tool_failures_do_not_fail_the_entire_solver(tmp_path):
+    adapter = OpenCodeAdapter(config(tmp_path, "opencode"))
+
+    adapter.verify_solver(
+        '{"type":"bench_opencode_message","message":{"type":"assistant",'
+        '"model":{"providerID":"github-copilot","id":"gpt-fixed"},'
+        '"content":[{"type":"tool",'
+        '"state":{"status":"error","error":{"type":"error",'
+        '"message":"command failed"}}}]}}\n'
+        '{"type":"bench_opencode_end","outcome":"succeeded"}'
+    )
+
+
+def test_opencode_solver_checks_exported_identity_not_tool_metadata(tmp_path):
+    adapter = OpenCodeAdapter(config(tmp_path, "opencode"))
+    message = {
+        "type": "assistant", "model": {"providerID": "github-copilot", "id": "gpt-fixed"},
+        "content": [{"metadata": {"model": "unrelated-tool-model"}}],
+    }
+    record = json.dumps({"type": "bench_opencode_message", "message": message})
+    ending = json.dumps({"type": "bench_opencode_end", "outcome": "succeeded"})
+
+    adapter.verify_solver(record + "\n" + ending)
+    with pytest.raises(IdentityMismatch):
+        adapter.verify_solver(record.replace("gpt-fixed", "fallback") + "\n" + ending)
+    with pytest.raises(InfrastructureError):
+        adapter.verify_solver(record + "\n" + ending.replace("succeeded", "interrupted"))
+    with pytest.raises(InfrastructureError):
+        adapter.verify_solver('{"type":"text","sessionID":"session-only"}')
+
+
+def test_opencode_uses_a_private_server_and_disposable_state(tmp_path):
+    adapter = OpenCodeAdapter(config(tmp_path, "opencode"))
+
+    command = adapter.command("fix it", "/fixture-workspace")
+    assert command[:2] == ["python3", "-c"]
+    assert command[3] == "/fixture-workspace"
+    assert "--standalone" in command
+    assert "--auto" in command
+    assert "--dir" not in command
+    assert "--standalone" in adapter.preflight_command()
+    assert adapter.environment()["XDG_STATE_HOME"] == "/home/bench/.local/state"
+
+
 def test_opencode_openrouter_command_and_identity_use_pinned_provider_model(tmp_path):
     value = TreatmentConfig(
         **{
@@ -104,6 +184,22 @@ def test_opencode_openrouter_command_and_identity_use_pinned_provider_model(tmp_
         adapter.verify_identity(
             '{"providerID":"openrouter","modelID":"anthropic/claude-sonnet-4"}'
         )
+
+
+def test_opencode_variant_reference_does_not_duplicate_model_flag(tmp_path):
+    value = config(tmp_path, "opencode")
+    value = TreatmentConfig(**{
+        **value.__dict__, "arguments": ["--model=github-copilot/gpt-fixed#high"],
+    })
+    adapter = OpenCodeAdapter(value)
+
+    command = adapter.command("fix it")
+
+    assert "--model" not in command
+    assert "--model=github-copilot/gpt-fixed#high" in command
+    adapter.verify_identity('{"model":{"providerID":"github-copilot","id":"gpt-fixed","variant":"high"}}')
+    with pytest.raises(IdentityMismatch):
+        adapter.verify_identity('{"model":{"providerID":"github-copilot","id":"fallback","variant":"high"}}')
 
 
 @pytest.mark.parametrize("harness,adapter_class", [("omp", OmpAdapter), ("pi", PiAdapter)])
@@ -134,10 +230,11 @@ def test_pi_family_openrouter_command_and_identity_use_pinned_provider_model(
         )
 
 
-def test_opencode_preflight_enables_identity_logs(tmp_path):
+def test_opencode_preflight_uses_structured_identity_without_log_flags(tmp_path):
     command = OpenCodeAdapter(config(tmp_path, "opencode")).preflight_command()
-    assert "--print-logs" in command
-    assert command[command.index("--log-level") + 1] == "INFO"
+    assert "--format=json" in command
+    assert "--print-logs" not in command
+    assert "--log-level" not in command
 
 
 def test_opencode_rejects_unpinned_auxiliary_model(tmp_path):

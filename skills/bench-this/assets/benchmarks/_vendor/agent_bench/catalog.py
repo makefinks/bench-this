@@ -169,7 +169,7 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
             required_fields=COMMON_REQUIRED_FIELDS,
             config_home=".copilot",
             installer=InstallerSpec(
-                arguments=MappingProxyType({"COPILOT_CLI_VERSION": "1.0.83"}),
+                arguments=MappingProxyType({"COPILOT_CLI_VERSION": "1.0.98"}),
                 commands=('npm install --global "@github/copilot@${COPILOT_CLI_VERSION}"',),
             ),
             adapter=AdapterKind.COPILOT,
@@ -213,8 +213,11 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
             required_fields=COMMON_REQUIRED_FIELDS | frozenset({"provider", "agent"}),
             config_home=".config/opencode",
             installer=InstallerSpec(
-                arguments=MappingProxyType({"OPENCODE_VERSION": "1.18.29"}),
-                commands=('npm install --global "opencode-ai@${OPENCODE_VERSION}"',),
+                arguments=MappingProxyType({"OPENCODE_VERSION": "2.0.32"}),
+                commands=(
+                    'npm uninstall --global opencode-ai',
+                    'npm install --global "@opencode/cli@${OPENCODE_VERSION}"',
+                ),
             ),
             adapter=AdapterKind.OPENCODE,
             writer=WriterKind.OPENCODE,
@@ -252,7 +255,7 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
             config_home=".omp/agent",
             installer=InstallerSpec(
                 arguments=MappingProxyType(
-                    {"BUN_VERSION": "1.4.2", "OMP_VERSION": "18.1.10"}
+                    {"BUN_VERSION": "1.4.3", "OMP_VERSION": "18.11.3"}
                 ),
                 commands=(
                     'npm install --global "bun@${BUN_VERSION}"',
@@ -291,15 +294,9 @@ HARNESS_CATALOG: Mapping[str, HarnessSpec] = MappingProxyType(
             required_fields=COMMON_REQUIRED_FIELDS | frozenset({"provider"}),
             config_home=".pi/agent",
             installer=InstallerSpec(
-                arguments=MappingProxyType(
-                    {
-                        "PI_MCP_ADAPTER_VERSION": "2.32.1",
-                        "PI_VERSION": "0.85.0",
-                    }
-                ),
+                arguments=MappingProxyType({"PI_VERSION": "1.3.0"}),
                 commands=(
                     'npm install --global --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSION}"',
-                    'npm install --prefix /opt/pi-mcp-adapter --ignore-scripts "pi-mcp-adapter@${PI_MCP_ADAPTER_VERSION}"',
                 ),
             ),
             adapter=AdapterKind.PI,

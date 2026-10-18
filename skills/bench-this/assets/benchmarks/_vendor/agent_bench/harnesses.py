@@ -7,6 +7,7 @@ from typing import Dict, List, Mapping, Optional, Tuple
 from .catalog import AMAZON_BEDROCK_PROVIDER, AdapterKind
 from .errors import ConfigurationError, IdentityMismatch, InfrastructureError
 from .models import TreatmentConfig, Usage
+from .opencode import run_script
 from .telemetry import (
     extract_identities,
     extract_identity,
@@ -14,6 +15,7 @@ from .telemetry import (
     extract_pi_terminal_message,
     parse_json_events,
     parse_pi_transcript,
+    parse_opencode_transcript,
     parse_usage,
 )
 
@@ -85,8 +87,9 @@ class CopilotAdapter(HarnessAdapter):
             "--output-format=json",
             "--allow-all-tools",
             "--allow-all-paths",
-            "--deny-tool=github",
+            "--disable-builtin-mcps",
             "--no-remote",
+            "--no-remote-export",
             "--no-auto-update",
             *self.config.arguments,
         ]
@@ -98,7 +101,8 @@ class CopilotAdapter(HarnessAdapter):
             "HOME": "/home/bench",
             "COPILOT_HOME": "/home/bench/.copilot",
             "COPILOT_MODEL": self.config.model,
-            "COPILOT_ALLOW_ALL": "true",
+            # Exact "true" also trusts repository hooks, plugins, and MCP servers.
+            "COPILOT_ALLOW_ALL": "1",
             "COPILOT_OTEL_FILE_EXPORTER_PATH": "/home/bench/copilot-otel.jsonl",
             "NO_COLOR": "1",
         }
@@ -131,21 +135,28 @@ class CopilotAdapter(HarnessAdapter):
 
 
 class OpenCodeAdapter(HarnessAdapter):
-    """OpenCode JSON-event adapter for explicitly allowlisted v1 providers."""
+    """OpenCode JSON adapter with a private server for every invocation."""
 
     def command(self, prompt: str, workspace: str = "/workspace") -> List[str]:
         """Build the provider-qualified, non-interactive OpenCode command."""
 
+        # Model references can include a reasoning variant.
+        # Avoid duplicate --model flags; identity checks still enforce the base pin.
+        model_override = any(
+            argument in {"--model", "-m"} or argument.startswith(("--model=", "-m="))
+            for argument in self.config.arguments
+        )
         return [
-            "opencode",
-            "run",
+            "python3",
+            "-c",
+            run_script(),
+            workspace,
+            "--standalone",
             "--format=json",
-            "--model",
-            self.config.qualified_model,
+            "--auto",
+            *([] if model_override else ["--model", self.config.qualified_model]),
             "--agent",
             self.config.agent or "build",
-            "--dir",
-            workspace,
             *self.config.arguments,
             prompt,
         ]
@@ -158,19 +169,28 @@ class OpenCodeAdapter(HarnessAdapter):
             "XDG_CONFIG_HOME": "/home/bench/.config",
             "XDG_DATA_HOME": "/home/bench/.local/share",
             "XDG_CACHE_HOME": "/home/bench/.cache",
+            "XDG_STATE_HOME": "/home/bench/.local/state",
             "NO_COLOR": "1",
         }
-
-    def preflight_command(self) -> List[str]:
-        """Enable INFO logs because OpenCode JSON events omit resolved identity."""
-
-        command = self.command(PREFLIGHT_PROMPT)
-        return [*command[:-1], "--print-logs", "--log-level", "INFO", command[-1]]
 
     def verify_identity(self, stdout: str, stderr: str = "") -> Tuple[Optional[str], str]:
         """Verify provider as well as model to detect silent provider fallback."""
 
-        identities = extract_identities(f"{stdout}\n{stderr}")
+        events = parse_json_events(f"{stdout}\n{stderr}")
+        records = [
+            event.get("message") for event in events
+            if isinstance(event, dict) and event.get("type") == "bench_opencode_message"
+        ]
+        identities = []
+        for message in records:
+            reference = message.get("model") if isinstance(message, dict) else None
+            if not isinstance(reference, dict) or not all(
+                isinstance(reference.get(key), str) for key in ("providerID", "id")
+            ):
+                raise IdentityMismatch("OpenCode assistant did not report a provider/model identity")
+            identities.append((reference["providerID"], reference["id"]))
+        if not records:
+            identities = extract_identities(f"{stdout}\n{stderr}")
         if not identities:
             raise IdentityMismatch("OpenCode did not report a resolved provider/model identity")
         unexpected = [
@@ -184,6 +204,41 @@ class OpenCodeAdapter(HarnessAdapter):
                 + ", ".join(unexpected)
             )
         return identities[-1]
+
+    def verify_preflight(self, stdout: str, stderr: str = "") -> None:
+        """Reject structured provider failures before accepting model identity."""
+
+        self.verify_solver(stdout, stderr)
+
+    def parse_usage(self, stdout: str, stderr: str = "", telemetry: str = "") -> Usage:
+        """Read assistant measurements without counting session-level aggregates."""
+
+        return parse_opencode_transcript(telemetry or f"{stdout}\n{stderr}")
+
+    def verify_solver(self, stdout: str, stderr: str = "") -> None:
+        """Reject JSON provider errors even when the client exits successfully."""
+
+        events = parse_json_events(f"{stdout}\n{stderr}")
+        pending = [(event, True) for event in events]
+        while pending:
+            value, top_level = pending.pop()
+            if isinstance(value, dict):
+                if (top_level and value.get("type") == "error") or (
+                    value.get("type") == "assistant" and value.get("finish") == "error"
+                ):
+                    error = value.get("error")
+                    detail = error.get("message") if isinstance(error, dict) else None
+                    raise InfrastructureError(detail or "OpenCode reported a provider error")
+                pending.extend((child, False) for child in value.values())
+            elif isinstance(value, list):
+                pending.extend((child, False) for child in value)
+        endings = [
+            event for event in events
+            if isinstance(event, dict) and event.get("type") == "bench_opencode_end"
+        ]
+        if not endings or endings[-1].get("outcome") != "succeeded":
+            raise InfrastructureError("OpenCode session did not complete successfully")
+        self.verify_identity(stdout, stderr)
 
 
 class _PiJsonAdapter(HarnessAdapter):
