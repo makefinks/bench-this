@@ -313,22 +313,6 @@ def _manifest_groups(manifest: Path, key: str = "requirement_groups") -> list[st
     return groups
 
 
-def _require_prompt_group_sections(prompt: Path, groups: list[str]) -> None:
-    """Make each scored outcome findable as an explicit public-contract section."""
-
-    headings = set()
-    for line in prompt.read_text(encoding="utf-8").splitlines():
-        match = re.fullmatch(r"#{2,6}\s+`?([a-z0-9][a-z0-9-]{0,62})`?", line.strip())
-        if match:
-            headings.add(match.group(1))
-    missing = [group for group in groups if group not in headings]
-    if missing:
-        raise WorkspaceError(
-            "prompt must contain an exact Markdown heading for every requirement group: "
-            + ", ".join(missing)
-        )
-
-
 def _require_group_scoring(test_directory: Path, label: str) -> None:
     """Require each scored suite to emit the structured result protocol."""
 
@@ -388,9 +372,8 @@ def _check(data: dict) -> dict:
         raise WorkspaceError(
             "authored tasks require public tests; missing " + ", ".join(missing_public_test_keys)
         )
-    groups = _manifest_groups(manifest)
+    _manifest_groups(manifest)
     _manifest_groups(manifest, "public_test_groups")
-    _require_prompt_group_sections(output / "prompt.md", groups)
     for directory, label in (
         (output / "public-tests", "public test suite"),
         (output / "hidden-tests", "hidden evaluator"),

@@ -85,12 +85,18 @@ workspace isolation, integration, and validation.
 
 ### Verify and review
 
-1. Read [the task-verifier contract](references/task-verifier.md). Launch exactly one independent,
-   read-only verifier per task, concurrently, using its handoff template verbatim. Start every
-   verifier before waiting for reports.
+1. Read [the task-verifier contract](references/task-verifier.md) and
+   [solver-visible evidence](references/solver-evidence.md). Launch exactly one independent,
+   read-only
+   verifier per task, concurrently, using its handoff template verbatim. Supply the author's
+   complete
+   assertion ledger and read-only base repository so it can verify citations without the reference
+   implementation. Start every verifier before waiting for reports.
 2. Review each bundle, task-agent report, and verifier report against
    [task quality](references/task-quality.md). Resolve every verifier `BLOCK` with a contained
    scratch-bundle correction or reject the task when correction requires fundamental re-scoping.
+   Use solver-visible evidence to resolve findings: keep discoverable contracts in the repository,
+   and prefer relaxing unsupported evaluator details over expanding the issue into a specification.
 3. Record the pre-accept decision required by the quality reference. Review the tasks together for
    duplication and breadth. Coordinator review is complete only when every approved group maps
    exactly across prompt, manifest, public tests, hidden evaluator, and assertion ledger; every

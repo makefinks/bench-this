@@ -3,6 +3,10 @@
 Read this file during candidate selection and again when reviewing authored tasks. A task is not
 strong merely because base validation fails and the reference passes.
 
+Use [solver-visible evidence](solver-evidence.md) for prompt design, assertion justification, and
+verification. The issue states intent and new product decisions; the base repository supplies
+discoverable contracts. The reference calibrates the evaluator, not the specification.
+
 ## Candidate gate
 
 Choose a coherent medium or large behavior change that makes the solver understand and modify the
@@ -58,7 +62,7 @@ Reject or replace a candidate when most of these are true:
 - the evaluator checks only examples already printed in the prompt;
 - no existing behavior can regress;
 - the historical change's interesting work lies outside the proposed task slice.
-- after fairly stating the complete public contract, the prompt identifies the files,
+- after stating the issue and necessary new product decisions, the prompt identifies the files,
   control flow, and edits closely enough that implementation is transcription;
 - most requirements reduce to edge cases of one localized implementation point;
 - the apparent scale comes from test count rather than independently failing behavior groups;
@@ -125,16 +129,12 @@ Before recommending a candidate, state:
 If those answers are weak, choose another candidate instead of compensating with obscure hidden
 cases.
 
-Apply a **full-disclosure test** before approval: imagine the solver has read every
-public requirement needed for a fair task. If that makes the correct edit obvious
-without tracing existing state, consumers, or compatibility behavior, reject the
-candidate. Do not rescue it by making the prompt vague or hiding required behavior.
-
-Full disclosure means disclosing the definition of correctness, not the evaluator's private cases.
-Hidden tests may surprise the solver with inputs, combinations, and edge conditions, but never with
-an output shape, field location, markup tag, ordering rule, literal, or compatibility obligation
-that the evaluator requires. If disclosing those requirements makes the task mechanical, reject the
-candidate instead of using the hidden evaluator to manufacture difficulty.
+Apply a **full-disclosure test** before approval: imagine the solver has the issue and access to all
+applicable base evidence. If the issue alone makes the edit obvious without investigating existing
+state, consumers, or compatibility behavior, choose another candidate. If the author copied those
+discoverable facts into the prompt, first restore an issue-first prompt. Full disclosure means all
+requirements are supported by solver-visible evidence, not that all evidence is repeated in prose.
+Hidden cases may exercise that evidence; reference-only details cannot manufacture difficulty.
 
 ## Evaluator discrimination
 
@@ -143,8 +143,9 @@ least one compatibility or integration assertion when the feature has one. Do no
 historical unit tests mechanically.
 
 Create deterministic coverage for every substantive requirement group. The exact evaluator inputs,
-fixtures, and combinations remain hidden, while every behavior they judge remains public in the
-prompt. Use the repository's most stable observable boundary for each group; checks may be unit or
+fixtures, and combinations remain hidden, while every scored behavior follows from the issue and
+applicable base evidence. Use the repository's most stable observable boundary for each group;
+checks may be unit or
 integration tests, CLI calls, generated-artifact comparisons, persisted-state inspection, or other
 exact observations. More checks within one group improve coverage but do not make the task larger.
 
@@ -157,10 +158,9 @@ Repository-native tests may supplement but never replace the required public sui
 candidate when no fair public check can give useful feedback without revealing the implementation
 recipe; do not create a hidden-only task.
 
-Give every declared group its own prompt section headed by the exact group ID. Every normative
-sentence, including introductory compatibility or preservation language, must map to one declared
-group. Context outside those sections must not create another obligation. This makes group scoring
-traceable to the instructions instead of turning the group list into evaluator-only metadata.
+Keep stable group IDs in the manifest and private coverage map. Map every prompt obligation and
+evaluator expectation to an approved group there. Use natural issue prose rather than requiring
+group-ID sections or a solver-visible assertion checklist.
 
 For time limits, cancellation, interruption, or early-return behavior, observing an eventual error
 is insufficient. Use a finite workload whose natural duration exceeds the limit, measure elapsed
@@ -212,17 +212,13 @@ time is unlimited by default; deterministic setup and evaluator phases remain bo
 
 ## Assertion ledger
 
-Before validation, list every evaluator assertion about observable behavior and justify it as one
-of:
-
-1. an explicit requirement in the public prompt;
-2. pre-existing observable behavior that the prompt requires the solver to preserve; or
-3. a hidden input, combination, or edge case exercising requirements from categories 1 or 2.
-
-An assertion justified only by the reference patch, historical test literals, or evaluator
-convenience is an undisclosed contract requirement and is forbidden. Rewrite the prompt, relax the
-assertion, or reject the task. Do not use broad prompt language such as "appropriate," "style," or
-"include a reminder" to justify one exact representation among several reasonable choices.
+Before validation, list every observable assertion and fixture/support dependency using the source
+categories and citation requirements in `solver-evidence.md`. Include the ledger in verifier
+handoff.
+An assertion justified only by the reference patch, reference-only test literals, or evaluator
+convenience is unsupported. Relax or remove it; clarify the issue only for a necessary new product
+decision. Broad language such as "appropriate" or "style" does not select one exact representation
+among several reasonable choices.
 
 Treat the following as contract details when the evaluator enforces them:
 
@@ -232,33 +228,37 @@ Treat the following as contract details when the evaluator enforces them:
 - exact punctuation, casing, wording, prefixes, and suffixes;
 - serialization, error, mutation, and compatibility shapes.
 
-Audit predicates as well as assertion labels. If the prompt permits descriptive error text, accept
+Audit predicates as well as assertion labels. If solver-visible evidence permits descriptive error
+text, accept
 all clear messages that identify the required problem instead of recognizing only historical words
-or phrases. Every event, return-object, or state type whose presence or count is asserted must be
-named in the public contract; a related event type does not imply an additional event. Remove
+or phrases. Every event, return-object, or state type whose presence or count is asserted needs an
+evidence-backed ledger entry; a related event type does not imply an additional event. Remove
 diagnostic assertions that are not required for the public behavior even when the reference emits
 them.
 
-State such details publicly when they are genuinely required. Otherwise evaluate the essential
-behavior without requiring the reference representation. Preserve the ledger in the task-agent
+Keep existing details in their repository sources. State genuinely new required decisions in the
+issue; otherwise evaluate behavior without requiring the reference representation. Preserve the
+ledger in the task-agent
 report for coordinator review; it is authoring evidence and must not be exposed to the solver.
 
 ## Prompt calibration
 
-Give the solver the public contract and necessary compatibility expectations, not the evaluator
-plan. Representative examples may clarify an interface, but do not enumerate every boundary the
-hidden tests exercise. If the prompt reads like pseudocode for the reference implementation,
-simplify it before validation.
+Give the solver an actionable issue, not a specification reconstructed from the diff. Identify the
+user's problem and desired outcome; leave existing contracts, affected locations, and integration
+paths to repository investigation. Representative examples may clarify a new product decision, but
+the prompt should not enumerate the hidden evaluator's boundaries or act as an implementation map.
 
 Audit flexible phrases before saving the prompt. When wording such as "style," "format
 appropriately," "preserve the payload," or "include metadata" permits multiple observable results,
-either define the required public representation or ensure the evaluator accepts every result
-allowed by that wording. Do not silently select the historical representation in hidden tests.
+check applicable base evidence before clarifying the issue. If that evidence does not resolve the
+choice, accept equivalent results or disclose a necessary new product decision. Do not silently
+select the historical representation in hidden tests.
 
-Then run a **recipe audit**: list the implementation decisions a solver must still make
-after reading the prompt. There must be meaningful repository-specific decisions left.
-If the honest list is empty because the full public contract necessarily describes the
-patch step by step, reject the task rather than withholding requirements.
+Then run a **recipe audit**: list the repository facts the solver must discover and implementation
+decisions it must make after reading the issue. If copied repository facts answer that
+investigation,
+remove the redundant prose. If the issue and necessary new decisions still prescribe the patch step
+by step, reject the task rather than withholding genuinely new requirements.
 
 ## Review completed tasks
 
@@ -285,8 +285,8 @@ Reject an authored task even after base-fail/reference-pass validation when:
 - the failure is only import resolution and the remaining implementation is mechanical;
 - the worker did not identify a real public entry point;
 - the assertion ledger is missing, incomplete, or relies on the reference patch as specification;
-- an exact observable requirement enforced by the evaluator is not disclosed by the prompt or an
-  explicit compatibility requirement;
+- an observable requirement enforced by the evaluator lacks an issue source, applicable cited base
+  evidence, or a justified derivation from either;
 - the base exits 1 because of a missing file/module, import or compile error, uncaught evaluator
   initialization exception, or unavailable tool instead of a reached behavioral assertion;
 - the staged solver environment cannot run the project's normal task-relevant validation command;

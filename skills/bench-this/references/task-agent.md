@@ -60,24 +60,11 @@ an SDK or framework from nested mocks. If the evaluator cannot import and exerci
 point with real historical dependencies plus small dependency-boundary fakes, stop and report the
 candidate as unsuitable.
 
-Write the minimum prompt that lets a repository user understand the feature. State inputs, outcomes,
-errors, side effects, and compatibility constraints, but leave implementation choices open. Do not
-copy the evaluator matrix into the prompt or forbid internal edits solely because they differ from
-the historical patch.
-
-Organize the public contract into one Markdown section per substantive requirement group, using the
-exact group ID as the heading. Put every normative statement under exactly one of those sections,
-including compatibility, error, timing, and preservation requirements. Introductory prose may give
-context but must not introduce additional obligations. Do not turn private examples into a long
-checklist, and do not split one behavior into many bullets merely to make the task look larger.
-Internal helpers, data structures, constructor choices, and repeated forwarding or call-site edits
-are not requirement groups.
-
-Keep private cases separate from the public contract. The evaluator may hide inputs, combinations,
-and edge conditions, but the prompt must disclose every required observable shape: property names
-and nesting, markup tags and placement, ordering, signatures, serialization, and exact wording when
-the evaluator enforces them. If the prompt intentionally leaves a representation flexible, the
-evaluator must not require the historical representation.
+Read [solver-visible evidence](solver-evidence.md) before writing the prompt or evaluator. Write an
+issue-first prompt and keep the evidence ledger private. Leave discoverable repository facts in the
+base workspace rather than copying interfaces, schemas, call paths, or implementation steps into
+the issue. Map every prompt obligation to an approved group in the report; group-ID headings are
+not required in the prompt.
 
 Create a compact public suite that gives the solver executable feedback on representative public
 behavior without turning the task into transcription. Put it under `public-tests/`, retain all three
@@ -91,10 +78,10 @@ instead of authoring a hidden-only task. Make the public entrypoint resolve its 
 its own file location, not a hard-coded `/public-tests` path, so the solver-visible copy is actually
 runnable.
 
-Review the boolean predicate behind every check, not only its human-readable label. Error-message
-checks must accept every clear wording allowed by the prompt. Every asserted event or result type,
-including supplemental stream events and nonzero event counts, must be explicitly required by the
-prompt or removed from the evaluator.
+Review the boolean predicate behind every check, not only its human-readable label. Justify exact
+representations and event/result counts using the shared evidence policy; accept equivalent results
+where that evidence leaves a choice. Error checks must not narrow descriptive wording to historical
+phrases without an applicable exact-message contract.
 
 Treat the root Dockerfile and `setup.sh` as provisional shared infrastructure. Do not edit them.
 Determine what the assigned task needs and report:
@@ -176,9 +163,9 @@ primary behavior check. Observe the public return value, exception, emitted even
 or state transition; structural assertions may only supplement that observation.
 
 Use `task-quality.md` to challenge the assignment before writing. Apply its full-disclosure test and
-recipe audit, then create the required assertion ledger mapping every observable evaluator assertion
-to an explicit prompt requirement, preserved observable behavior, or a hidden case of one of those
-requirements. If an assertion is justified only by the reference patch, rewrite or remove it. If the
+recipe audit, then create the assertion ledger following `solver-evidence.md`, including exact base
+citations and their applicability. If an assertion is justified only by the reference patch, rewrite
+or remove it. If the
 task is mechanically solvable from a fair prompt or has no meaningful behavior beyond a new import,
 report that it is too easy and stop. Consider likely partial implementations while choosing
 behavioral coverage, but do not create or execute artificial solution variants.
@@ -239,9 +226,10 @@ Return a concise report with these headings:
 14. `Workspace check`
 
 Also state which public entry point the evaluator exercises and why any exact symbol named in the
-prompt is genuinely public. In the assertion ledger, identify the public requirement or preserved
-behavior and substantive group supporting each observable assertion and flag any assertion that had
-to be removed or relaxed because the prompt permitted multiple representations. In the requirement
+prompt is genuinely public. Include the complete assertion ledger in the report for verifier
+handoff,
+with the source and substantive group supporting each observable assertion. Flag assertions removed
+or relaxed because solver-visible evidence permits multiple representations. In the requirement
 coverage map, connect every approved group to its public evaluator boundary and representative check
 types without exposing private inputs. In the approved-scope diff, copy the handed-off group list
 verbatim and identify any unmatched prompt or evaluator item; the only acceptable result before
@@ -255,8 +243,8 @@ then describe the distinct hidden condition families without exposing private li
 Confirm that both required suites are present and that the public suite gives useful solver
 feedback.
 
-In the requirement coverage map, also confirm that every normative prompt sentence belongs to one
-exact group, that the reference was directly observed satisfying it, and that each result group has
+In the requirement coverage map, also confirm that every prompt obligation maps to an approved
+group, that the reference was directly observed satisfying it, and that each result group has
 an independent failure boundary that cannot be skipped by an earlier group's failure. State the
 time oracle for
 every timing-related requirement and the exact conditions that can set `candidate_error`.
@@ -319,7 +307,7 @@ Return:
 - whether a task-specific image is genuinely required
 - validation results, difficulty evidence, and unresolved failures
 - successful `task_workspace.py check` result
-- evaluator assertion ledger mapping observable checks to public requirements or preserved behavior
+- evaluator assertion ledger mapping checks to issue statements, cited base evidence, or derived cases
 - requirement coverage map connecting every approved group to a stable public evaluator boundary
 - approved-scope diff with the handed-off groups copied verbatim and no unmatched items
 - evaluator technique audit listing all fakes and forbidden-technique scan results

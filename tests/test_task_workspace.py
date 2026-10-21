@@ -221,16 +221,25 @@ def test_accept_requires_public_test_manifest_fields(repository):
     assert "authored tasks require public tests" in result.stderr
 
 
-def test_accept_requires_prompt_section_for_every_group(repository):
-    info = prepare(repository, "missing-prompt-group")
-    valid_bundle(info, "missing-prompt-group")
-    (Path(info["output"]) / "prompt.md").write_text("## Requirements\n\nDo the thing.\n")
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Do the thing.\n",
+        "## Desired outcome\n\nDo the thing.\n",
+        "## core-behavior\n\nDo the thing.\n",
+    ],
+)
+def test_check_and_accept_allow_issue_prose_without_manifest_group_headings(repository, prompt):
+    repo, _, _ = repository
+    info = prepare(repository)
+    valid_bundle(info)
+    (Path(info["output"]) / "prompt.md").write_text(prompt)
+    manifest = (Path(info["output"]) / "task.yaml").read_bytes()
 
-    result = run("accept", info["scratch"], check=False)
-
-    assert result.returncode == 2
-    assert "exact Markdown heading" in result.stderr
-    assert "core-behavior" in result.stderr
+    assert json.loads(run("check", info["scratch"]).stdout)["checked"] is True
+    assert json.loads(run("accept", info["scratch"]).stdout)["accepted"] is True
+    assert (repo / "benchmarks/tasks/demo/prompt.md").read_text() == prompt
+    assert (repo / "benchmarks/tasks/demo/task.yaml").read_bytes() == manifest
 
 
 def test_validation_git_operations_preserve_authoring_infrastructure(repository):
